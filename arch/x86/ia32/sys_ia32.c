@@ -205,7 +205,7 @@ long sys32_fadvise64_64(int fd, __u32 offset_low, __u32 offset_high,
 asmlinkage ssize_t sys32_readahead(int fd, unsigned off_lo, unsigned off_hi,
 				   size_t count)
 {
-	return sys_readahead(fd, ((u64)off_hi << 32) | off_lo, count);
+	return ksys_readahead(fd, ((u64)off_hi << 32) | off_lo, count);
 }
 
 asmlinkage long sys32_sync_file_range(int fd, unsigned off_low, unsigned off_hi,
