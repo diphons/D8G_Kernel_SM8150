@@ -1168,7 +1168,7 @@ int fw_variant_set(const char *val, const struct kernel_param *kp)
     int res = param_set_ushort(val, kp); // Use helper for write variable
     if(res == 0 && nvt_fw >= 0 && nvt_fw <=1)
     {
-    	ts->fw_name = nvt_get_panel_type(ts);
+    	ts->fw_name = (const u8*)((uintptr_t)nvt_get_panel_type(ts));
         NVT_ERR("set firmware variant %d\n", *pvalue);
         Boot_Update_Firmware(0);
     }
