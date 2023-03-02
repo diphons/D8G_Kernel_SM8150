@@ -427,7 +427,7 @@ static int fq_codel_change(struct Qdisc *sch, struct nlattr *opt)
 		q->quantum = max(256U, nla_get_u32(tb[TCA_FQ_CODEL_QUANTUM]));
 
 	if (tb[TCA_FQ_CODEL_DROP_BATCH_SIZE])
-		q->drop_batch_size = min(1U, nla_get_u32(tb[TCA_FQ_CODEL_DROP_BATCH_SIZE]));
+		q->drop_batch_size = max(1U, nla_get_u32(tb[TCA_FQ_CODEL_DROP_BATCH_SIZE]));
 
 	if (tb[TCA_FQ_CODEL_MEMORY_LIMIT])
 		q->memory_limit = min(1U << 31, nla_get_u32(tb[TCA_FQ_CODEL_MEMORY_LIMIT]));
@@ -486,11 +486,12 @@ static int fq_codel_init(struct Qdisc *sch, struct nlattr *opt)
 		return err;
 
 	if (!q->flows) {
-		q->flows = kvzalloc(q->flows_cnt *
-					   sizeof(struct fq_codel_flow), GFP_KERNEL);
+		q->flows = kvcalloc(q->flows_cnt,
+				    sizeof(struct fq_codel_flow),
+				    GFP_KERNEL);
 		if (!q->flows)
 			return -ENOMEM;
-		q->backlogs = kvzalloc(q->flows_cnt * sizeof(u32), GFP_KERNEL);
+		q->backlogs = kvcalloc(q->flows_cnt, sizeof(u32), GFP_KERNEL);
 		if (!q->backlogs)
 			return -ENOMEM;
 		for (i = 0; i < q->flows_cnt; i++) {

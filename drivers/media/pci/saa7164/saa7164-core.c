@@ -1122,23 +1122,11 @@ static int saa7164_proc_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-static int saa7164_proc_open(struct inode *inode, struct file *filp)
-{
-	return single_open(filp, saa7164_proc_show, NULL);
-}
-
-static const struct file_operations saa7164_proc_fops = {
-	.open		= saa7164_proc_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
 static int saa7164_proc_create(void)
 {
 	struct proc_dir_entry *pe;
 
-	pe = proc_create("saa7164", S_IRUGO, NULL, &saa7164_proc_fops);
+	pe = proc_create_single("saa7164", S_IRUGO, NULL, saa7164_proc_show);
 	if (!pe)
 		return -ENOMEM;
 
@@ -1240,7 +1228,7 @@ static int saa7164_initdev(struct pci_dev *pci_dev,
 
 	if (saa7164_dev_setup(dev) < 0) {
 		err = -EINVAL;
-		goto fail_free;
+		goto fail_dev;
 	}
 
 	/* print pci info */
@@ -1408,6 +1396,8 @@ fail_fw:
 
 fail_irq:
 	saa7164_dev_unregister(dev);
+fail_dev:
+	pci_disable_device(pci_dev);
 fail_free:
 	v4l2_device_unregister(&dev->v4l2_dev);
 	kfree(dev);

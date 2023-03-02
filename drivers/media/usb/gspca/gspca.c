@@ -1863,11 +1863,11 @@ out:
 	return ret;
 }
 
-static unsigned int dev_poll(struct file *file, poll_table *wait)
+static __poll_t dev_poll(struct file *file, poll_table *wait)
 {
 	struct gspca_dev *gspca_dev = video_drvdata(file);
-	unsigned long req_events = poll_requested_events(wait);
-	int ret = 0;
+	__poll_t req_events = poll_requested_events(wait);
+	__poll_t ret = 0;
 
 	PDEBUG(D_FRAM, "poll");
 
@@ -2140,6 +2140,9 @@ out:
 		input_unregister_device(gspca_dev->input_dev);
 #endif
 	v4l2_ctrl_handler_free(gspca_dev->vdev.ctrl_handler);
+	v4l2_device_unregister(&gspca_dev->v4l2_dev);
+	if (sd_desc->probe_error)
+		sd_desc->probe_error(gspca_dev);
 	kfree(gspca_dev->usb_buf);
 	kfree(gspca_dev);
 	return ret;

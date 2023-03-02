@@ -838,12 +838,12 @@ static int emmaprp_release(struct file *file)
 	return 0;
 }
 
-static unsigned int emmaprp_poll(struct file *file,
+static __poll_t emmaprp_poll(struct file *file,
 				 struct poll_table_struct *wait)
 {
 	struct emmaprp_dev *pcdev = video_drvdata(file);
 	struct emmaprp_ctx *ctx = file->private_data;
-	unsigned int res;
+	__poll_t res;
 
 	mutex_lock(&pcdev->dev_mutex);
 	res = v4l2_m2m_poll(file, ctx->m2m_ctx, wait);
@@ -942,8 +942,11 @@ static int emmaprp_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, pcdev);
 
 	irq = platform_get_irq(pdev, 0);
-	if (irq < 0)
-		return irq;
+	if (irq < 0) {
+		ret = irq;
+		goto rel_vdev;
+	}
+
 	ret = devm_request_irq(&pdev->dev, irq, emmaprp_irq, 0,
 			       dev_name(&pdev->dev), pcdev);
 	if (ret)

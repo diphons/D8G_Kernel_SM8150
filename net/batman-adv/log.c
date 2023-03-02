@@ -176,7 +176,7 @@ static ssize_t batadv_log_read(struct file *file, char __user *buf,
 	return error;
 }
 
-static unsigned int batadv_log_poll(struct file *file, poll_table *wait)
+static __poll_t batadv_log_poll(struct file *file, poll_table *wait)
 {
 	struct batadv_priv *bat_priv = file->private_data;
 	struct batadv_priv_debug_log *debug_log = bat_priv->debug_log;
@@ -195,6 +195,7 @@ static const struct file_operations batadv_log_fops = {
 	.read           = batadv_log_read,
 	.poll           = batadv_log_poll,
 	.llseek         = no_llseek,
+	.owner          = THIS_MODULE,
 };
 
 int batadv_debug_log_setup(struct batadv_priv *bat_priv)

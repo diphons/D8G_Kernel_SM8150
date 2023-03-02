@@ -305,7 +305,7 @@ void inet_csk_prepare_forced_close(struct sock *sk);
 /*
  * LISTEN is a special case for poll..
  */
-static inline unsigned int inet_csk_listen_poll(const struct sock *sk)
+static inline __poll_t inet_csk_listen_poll(const struct sock *sk)
 {
 	return !reqsk_queue_empty(&inet_csk(sk)->icsk_accept_queue) ?
 			(POLLIN | POLLRDNORM) : 0;
@@ -320,6 +320,10 @@ int inet_csk_compat_getsockopt(struct sock *sk, int level, int optname,
 			       char __user *optval, int __user *optlen);
 int inet_csk_compat_setsockopt(struct sock *sk, int level, int optname,
 			       char __user *optval, unsigned int optlen);
+
+/* update the fast reuse flag when adding a socket */
+void inet_csk_update_fastreuse(struct inet_bind_bucket *tb,
+			       struct sock *sk);
 
 struct dst_entry *inet_csk_update_pmtu(struct sock *sk, u32 mtu);
 #endif /* _INET_CONNECTION_SOCK_H */

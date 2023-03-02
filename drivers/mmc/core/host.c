@@ -30,6 +30,7 @@
 #include <linux/mmc/slot-gpio.h>
 
 #include "core.h"
+#include "crypto.h"
 #include "host.h"
 #include "slot-gpio.h"
 #include "pwrseq.h"
@@ -198,6 +199,7 @@ void mmc_host_clk_hold(struct mmc_host *host)
 	spin_unlock_irqrestore(&host->clk_lock, flags);
 	mutex_unlock(&host->clk_gate_mutex);
 }
+EXPORT_SYMBOL(mmc_host_clk_hold);
 
 /**
  *	mmc_host_may_gate_card - check if this card may be gated
@@ -247,6 +249,7 @@ void mmc_host_clk_release(struct mmc_host *host)
 				      msecs_to_jiffies(host->clkgate_delay));
 	spin_unlock_irqrestore(&host->clk_lock, flags);
 }
+EXPORT_SYMBOL(mmc_host_clk_release);
 
 /**
  *	mmc_host_clk_rate - get current clock frequency setting
@@ -478,6 +481,16 @@ int mmc_retune(struct mmc_host *host)
 			host->ops->prepare_hs400_tuning(host, &host->ios);
 	}
 
+	/*
+	 * Timing should be adjusted to the HS400 target
+	 * operation frequency for tuning process.
+	 * Similar handling is also done in mmc_hs200_tuning()
+	 * This is handled properly in sdhci-msm.c from msm-5.4 onwards.
+	 */
+	if (host->card->mmc_avail_type & EXT_CSD_CARD_TYPE_HS400 &&
+		host->ios.bus_width == MMC_BUS_WIDTH_8)
+		mmc_set_timing(host, MMC_TIMING_MMC_HS400);
+
 	err = mmc_execute_tuning(host->card);
 	if (err)
 		goto out;
@@ -495,6 +508,16 @@ static void mmc_retune_timer(unsigned long data)
 	struct mmc_host *host = (struct mmc_host *)data;
 
 	mmc_retune_needed(host);
+}
+
+static int mmc_validate_host_caps(struct mmc_host *host)
+{
+	if (host->caps & MMC_CAP_SDIO_IRQ && !host->ops->enable_sdio_irq) {
+		dev_warn(host->parent, "missing ->enable_sdio_irq() ops\n");
+		return -EINVAL;
+	}
+
+	return 0;
 }
 
 /**
@@ -962,8 +985,9 @@ int mmc_add_host(struct mmc_host *host)
 {
 	int err;
 
-	WARN_ON((host->caps & MMC_CAP_SDIO_IRQ) &&
-		!host->ops->enable_sdio_irq);
+	err = mmc_validate_host_caps(host);
+	if (err)
+		return err;
 
 	err = device_add(&host->class_dev);
 	if (err)
@@ -1047,6 +1071,7 @@ EXPORT_SYMBOL(mmc_remove_host);
  */
 void mmc_free_host(struct mmc_host *host)
 {
+	mmc_crypto_free_host(host);
 	mmc_pwrseq_free(host);
 	put_device(&host->class_dev);
 }

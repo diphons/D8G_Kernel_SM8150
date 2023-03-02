@@ -213,6 +213,8 @@ source "drivers/hwtracing/stm/Kconfig"
 
 source "drivers/hwtracing/intel_th/Kconfig"
 
+source "drivers/hwtracing/google/Kconfig"
+
 source "drivers/fpga/Kconfig"
 
 source "drivers/fsi/Kconfig"
@@ -225,8 +227,8 @@ source "drivers/sensors/Kconfig"
 
 source "drivers/esoc/Kconfig"
 
-source "drivers/halls/Kconfig"
+source "techpack/data/drivers/Kconfig"
 
-source "drivers/trusty/Kconfig"
+source "drivers/dts_eagle/Kconfig"
 
 endmenu

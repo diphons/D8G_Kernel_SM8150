@@ -14,6 +14,7 @@
 #define ANY_ID (~0)
 
 static const struct adreno_gpu_core adreno_gpulist[] = {
+#if 0
 	{
 		.gpurev = ADRENO_REV_A306,
 		.core = 3,
@@ -335,6 +336,7 @@ static const struct adreno_gpu_core adreno_gpulist[] = {
 		.num_protected_regs = 0x20,
 		.busy_mask = 0xFFFFFFFE,
 	},
+#endif
 	{
 		.gpurev = ADRENO_REV_A630,
 		.core = 6,
@@ -466,7 +468,7 @@ static const struct adreno_gpu_core adreno_gpulist[] = {
 		.patchid = ANY_ID,
 		.features = ADRENO_64BIT | ADRENO_RPMH | ADRENO_GPMU |
 			ADRENO_CONTENT_PROTECTION | ADRENO_IOCOHERENT |
-			ADRENO_IFPC,
+			ADRENO_IFPC | ADRENO_PREEMPTION,
 		.sqefw_name = "a630_sqe.fw",
 		.zap_name = "a640_zap",
 		.gpudev = &adreno_a6xx_gpudev,

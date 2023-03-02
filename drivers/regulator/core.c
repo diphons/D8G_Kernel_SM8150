@@ -52,19 +52,6 @@
 #define rdev_dbg(rdev, fmt, ...)					\
 	pr_debug("%s: " fmt, rdev_get_name(rdev), ##__VA_ARGS__)
 
-#define regulator_debug_output(m, c, fmt, ...)		\
-do {							\
-	if (m)						\
-		seq_printf(m, fmt, ##__VA_ARGS__);	\
-	else if (c)					\
-		pr_cont(fmt, ##__VA_ARGS__);		\
-	else						\
-		pr_info(fmt, ##__VA_ARGS__);		\
-} while (0)
-
-static u32 debug_suspend = 0;
-static bool only_enabled_print = false;
-static DEFINE_MUTEX(regulator_debug_lock);
 static DEFINE_MUTEX(regulator_list_mutex);
 static LIST_HEAD(regulator_map_list);
 static LIST_HEAD(regulator_ena_gpio_list);
@@ -1066,7 +1053,6 @@ static int _regulator_do_enable(struct regulator_dev *rdev);
 /**
  * set_machine_constraints - sets regulator constraints
  * @rdev: regulator source
- * @constraints: constraints to apply
  *
  * Allows platform initialisation code to define and constrain
  * regulator circuits e.g. valid voltage/current ranges, etc.  NOTE:
@@ -1074,20 +1060,10 @@ static int _regulator_do_enable(struct regulator_dev *rdev);
  * regulator operations to proceed i.e. set_voltage, set_current_limit,
  * set_mode.
  */
-static int set_machine_constraints(struct regulator_dev *rdev,
-	const struct regulation_constraints *constraints)
+static int set_machine_constraints(struct regulator_dev *rdev)
 {
 	int ret = 0;
 	const struct regulator_ops *ops = rdev->desc->ops;
-
-	if (constraints)
-		rdev->constraints = kmemdup(constraints, sizeof(*constraints),
-					    GFP_KERNEL);
-	else
-		rdev->constraints = kzalloc(sizeof(*constraints),
-					    GFP_KERNEL);
-	if (!rdev->constraints)
-		return -ENOMEM;
 
 	ret = machine_constraints_voltage(rdev, rdev->constraints);
 	if (ret != 0)
@@ -1132,6 +1108,12 @@ static int set_machine_constraints(struct regulator_dev *rdev,
 	 * and we have control then make sure it is enabled.
 	 */
 	if (rdev->constraints->always_on || rdev->constraints->boot_on) {
+		/* If we want to enable this regulator, make sure that we know
+		 * the supplying regulator.
+		 */
+		if (rdev->supply_name && !rdev->supply)
+			return -EPROBE_DEFER;
+
 		ret = _regulator_do_enable(rdev);
 		if (ret < 0 && ret != -EINVAL) {
 			rdev_err(rdev, "failed to enable\n");
@@ -1209,6 +1191,7 @@ static int set_supply(struct regulator_dev *rdev,
 
 	rdev->supply = create_regulator(supply_rdev, &rdev->dev, "SUPPLY");
 	if (rdev->supply == NULL) {
+		module_put(supply_rdev->owner);
 		err = -ENOMEM;
 		return err;
 	}
@@ -1232,7 +1215,7 @@ static int set_consumer_device_supply(struct regulator_dev *rdev,
 				      const char *consumer_dev_name,
 				      const char *supply)
 {
-	struct regulator_map *node;
+	struct regulator_map *node, *new_node;
 	int has_dev;
 
 	if (supply == NULL)
@@ -1243,6 +1226,22 @@ static int set_consumer_device_supply(struct regulator_dev *rdev,
 	else
 		has_dev = 0;
 
+	new_node = kzalloc(sizeof(struct regulator_map), GFP_KERNEL);
+	if (new_node == NULL)
+		return -ENOMEM;
+
+	new_node->regulator = rdev;
+	new_node->supply = supply;
+
+	if (has_dev) {
+		new_node->dev_name = kstrdup(consumer_dev_name, GFP_KERNEL);
+		if (new_node->dev_name == NULL) {
+			kfree(new_node);
+			return -ENOMEM;
+		}
+	}
+
+	mutex_lock(&regulator_list_mutex);
 	list_for_each_entry(node, &regulator_map_list, list) {
 		if (node->dev_name && consumer_dev_name) {
 			if (strcmp(node->dev_name, consumer_dev_name) != 0)
@@ -1260,26 +1259,19 @@ static int set_consumer_device_supply(struct regulator_dev *rdev,
 			 node->regulator->desc->name,
 			 supply,
 			 dev_name(&rdev->dev), rdev_get_name(rdev));
-		return -EBUSY;
+		goto fail;
 	}
 
-	node = kzalloc(sizeof(struct regulator_map), GFP_KERNEL);
-	if (node == NULL)
-		return -ENOMEM;
+	list_add(&new_node->list, &regulator_map_list);
+	mutex_unlock(&regulator_list_mutex);
 
-	node->regulator = rdev;
-	node->supply = supply;
-
-	if (has_dev) {
-		node->dev_name = kstrdup(consumer_dev_name, GFP_KERNEL);
-		if (node->dev_name == NULL) {
-			kfree(node);
-			return -ENOMEM;
-		}
-	}
-
-	list_add(&node->list, &regulator_map_list);
 	return 0;
+
+fail:
+	mutex_unlock(&regulator_list_mutex);
+	kfree(new_node->dev_name);
+	kfree(new_node);
+	return -EBUSY;
 }
 
 static void unset_regulator_supplies(struct regulator_dev *rdev)
@@ -1514,6 +1506,7 @@ static struct regulator_dev *regulator_dev_lookup(struct device *dev,
 		node = of_get_regulator(dev, supply);
 		if (node) {
 			r = of_find_regulator_by_node(node);
+			of_node_put(node);
 			if (r)
 				return r;
 
@@ -1584,6 +1577,15 @@ static int regulator_resolve_supply(struct regulator_dev *rdev)
 				rdev->supply_name, rdev->desc->name);
 			return -EPROBE_DEFER;
 		}
+	}
+
+	if (r == rdev) {
+		dev_err(dev, "Supply for %s (%s) resolved to itself\n",
+			rdev->desc->name, rdev->supply_name);
+		if (!have_full_constraints())
+			return -EINVAL;
+		r = dummy_regulator_rdev;
+		get_device(&r->dev);
 	}
 
 	/*
@@ -3278,6 +3280,8 @@ static int _regulator_get_voltage(struct regulator_dev *rdev)
 		ret = rdev->desc->fixed_uV;
 	} else if (rdev->supply) {
 		ret = _regulator_get_voltage(rdev->supply->rdev);
+	} else if (rdev->supply_name) {
+		return -EPROBE_DEFER;
 	} else {
 		return -EINVAL;
 	}
@@ -4371,7 +4375,6 @@ struct regulator_dev *
 regulator_register(const struct regulator_desc *regulator_desc,
 		   const struct regulator_config *cfg)
 {
-	const struct regulation_constraints *constraints = NULL;
 	const struct regulator_init_data *init_data;
 	struct regulator_config *config = NULL;
 	static atomic_t regulator_no = ATOMIC_INIT(-1);
@@ -4471,40 +4474,51 @@ regulator_register(const struct regulator_desc *regulator_desc,
 
 	/* set regulator constraints */
 	if (init_data)
-		constraints = &init_data->constraints;
+		rdev->constraints = kmemdup(&init_data->constraints,
+					    sizeof(*rdev->constraints),
+					    GFP_KERNEL);
+	else
+		rdev->constraints = kzalloc(sizeof(*rdev->constraints),
+					    GFP_KERNEL);
+	if (!rdev->constraints) {
+		ret = -ENOMEM;
+		goto wash;
+	}
 
 	if (init_data && init_data->supply_regulator)
 		rdev->supply_name = init_data->supply_regulator;
 	else if (regulator_desc->supply_name)
 		rdev->supply_name = regulator_desc->supply_name;
 
-	/*
-	 * Attempt to resolve the regulator supply, if specified,
-	 * but don't return an error if we fail because we will try
-	 * to resolve it again later as more regulators are added.
-	 */
-	if (regulator_resolve_supply(rdev))
-		rdev_dbg(rdev, "unable to resolve supply\n");
-
-	ret = set_machine_constraints(rdev, constraints);
+	ret = set_machine_constraints(rdev);
+	if (ret == -EPROBE_DEFER) {
+		/* Regulator might be in bypass mode and so needs its supply
+		 * to set the constraints */
+		/* FIXME: this currently triggers a chicken-and-egg problem
+		 * when creating -SUPPLY symlink in sysfs to a regulator
+		 * that is just being created */
+		ret = regulator_resolve_supply(rdev);
+		if (!ret)
+			ret = set_machine_constraints(rdev);
+		else
+			rdev_dbg(rdev, "unable to resolve supply early: %pe\n",
+				 ERR_PTR(ret));
+	}
 	if (ret < 0)
 		goto wash;
 
 	/* add consumers devices */
 	if (init_data) {
-		mutex_lock(&regulator_list_mutex);
 		for (i = 0; i < init_data->num_consumer_supplies; i++) {
 			ret = set_consumer_device_supply(rdev,
 				init_data->consumer_supplies[i].dev_name,
 				init_data->consumer_supplies[i].supply);
 			if (ret < 0) {
-				mutex_unlock(&regulator_list_mutex);
 				dev_err(dev, "Failed to set supply %s\n",
 					init_data->consumer_supplies[i].supply);
 				goto unset_supplies;
 			}
 		}
-		mutex_unlock(&regulator_list_mutex);
 	}
 
 	if (!rdev->desc->ops->get_voltage &&
@@ -4788,52 +4802,42 @@ static void regulator_summary_show_subtree(struct seq_file *s,
 	if (!rdev)
 		return;
 
-	if (only_enabled_print && !rdev->use_count)
-		return;
-
-	regulator_debug_output(s, 1, "%*s%-*s %20d %4d %6d ",
+	seq_printf(s, "%*s%-*s %3d %4d %6d ",
 		   level * 3 + 1, "",
 		   30 - level * 3, rdev_get_name(rdev),
 		   rdev->use_count, rdev->open_count, rdev->bypass_count);
 
-	regulator_debug_output(s, 1, "%5dmV ", _regulator_get_voltage(rdev) / 1000);
-	regulator_debug_output(s, 1, "%5dmA ", _regulator_get_current_limit(rdev) / 1000);
+	seq_printf(s, "%5dmV ", _regulator_get_voltage(rdev) / 1000);
+	seq_printf(s, "%5dmA ", _regulator_get_current_limit(rdev) / 1000);
 
 	c = rdev->constraints;
 	if (c) {
 		switch (rdev->desc->type) {
 		case REGULATOR_VOLTAGE:
-			regulator_debug_output(s, 1, "%5dmV %5dmV ",
+			seq_printf(s, "%5dmV %5dmV ",
 				   c->min_uV / 1000, c->max_uV / 1000);
 			break;
 		case REGULATOR_CURRENT:
-			regulator_debug_output(s, 1, "%5dmA %5dmA ",
+			seq_printf(s, "%5dmA %5dmA ",
 				   c->min_uA / 1000, c->max_uA / 1000);
 			break;
 		}
 	}
 
-	regulator_debug_output(s, 1, "\n");
+	seq_puts(s, "\n");
 
 	list_for_each_entry(consumer, &rdev->consumer_list, list) {
 		if (consumer->dev && consumer->dev->class == &regulator_class)
 			continue;
 
-		if (only_enabled_print && !consumer->enabled)
-			continue;
-		regulator_debug_output(s, 1, "%*s%-*s ",
+		seq_printf(s, "%*s%-*s ",
 			   (level + 1) * 3 + 1, "",
-			   45 - (level + 1) * 3,
+			   30 - (level + 1) * 3,
 			   consumer->dev ? dev_name(consumer->dev) : "deviceless");
-
-		if (consumer->supply_name)
-			regulator_debug_output(s, 1, "%-45s ", consumer->supply_name);
-		else
-			regulator_debug_output(s, 1, "%-45s ", "(NULL)");
 
 		switch (rdev->desc->type) {
 		case REGULATOR_VOLTAGE:
-			regulator_debug_output(s, 1, "%25dmV %5dmV",
+			seq_printf(s, "%37dmV %5dmV",
 				   consumer->min_uV / 1000,
 				   consumer->max_uV / 1000);
 			break;
@@ -4841,10 +4845,7 @@ static void regulator_summary_show_subtree(struct seq_file *s,
 			break;
 		}
 
-		regulator_debug_output(s, 1, " %5c", (consumer->enabled ? 'Y' : 'N'));
-		regulator_debug_output(s, 1, " %5d", consumer->always_on);
-
-		regulator_debug_output(s, 1, "\n");
+		seq_puts(s, "\n");
 	}
 
 	summary_data.s = s;
@@ -4868,16 +4869,12 @@ static int regulator_summary_show_roots(struct device *dev, void *data)
 
 static int regulator_summary_show(struct seq_file *s, void *data)
 {
-	if (!mutex_trylock(&regulator_debug_lock))
-		return 0;
-
-	seq_puts(s, " regulator-dev                                  regulator-name                      use open bypass voltage current     min     max    enabled   always_on\n");
-	seq_puts(s, "------------------------------------------------------------------------------------------------------------------------------------------\n");
+	seq_puts(s, " regulator                      use open bypass voltage current     min     max\n");
+	seq_puts(s, "-------------------------------------------------------------------------------\n");
 
 	class_for_each_device(&regulator_class, NULL, s,
 			      regulator_summary_show_roots);
 
-	mutex_unlock(&regulator_debug_lock);
 	return 0;
 }
 
@@ -4896,53 +4893,6 @@ static const struct file_operations regulator_summary_fops = {
 #endif
 };
 
-static void regulator_debug_print_regulators(struct seq_file *s)
-{
-	if (!mutex_trylock(&regulator_debug_lock))
-		return;
-
-	regulator_debug_output(s, 0, "Enabled regulators:\n");
-	regulator_debug_output(s, 0, " regulator-dev                  regulator-name                      use open bypass voltage current     min     max    enabled   always_on\n");
-	regulator_debug_output(s, 0, "------------------------------------------------------------------------------------------------------------------------------------------\n");
-#ifdef CONFIG_DEBUG_FS
-	class_for_each_device(&regulator_class, NULL, s, regulator_summary_show_roots);
-#endif
-	mutex_unlock(&regulator_debug_lock);
-}
-
-static int enabled_regulators_show(struct seq_file *s, void *unused)
-{
-	only_enabled_print = true;
-	regulator_debug_print_regulators(s);
-	only_enabled_print = false;
-	return 0;
-}
-
-static int enabled_regulators_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, enabled_regulators_show, inode->i_private);
-}
-
-static const struct file_operations regulator_enabled_list_fops = {
-	.open		= enabled_regulators_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= seq_release,
-};
-
-void regulator_debug_print_enabled(bool only_enabled)
-{
-	if (likely(!debug_suspend))
-		return;
-
-	if (only_enabled)
-		only_enabled_print = true;
-
-	regulator_debug_print_regulators(NULL);
-	only_enabled_print = false;
-}
-EXPORT_SYMBOL_GPL(regulator_debug_print_enabled);
-
 static int __init regulator_init(void)
 {
 	int ret;
@@ -4958,11 +4908,6 @@ static int __init regulator_init(void)
 
 	debugfs_create_file("regulator_summary", 0444, debugfs_root,
 			    NULL, &regulator_summary_fops);
-
-	debugfs_create_file("regulator_enabled_list", 0444, debugfs_root,
-				NULL, &regulator_enabled_list_fops);
-
-	debugfs_create_u32("debug_suspend", 0644, debugfs_root, &debug_suspend);
 
 	regulator_dummy_init();
 

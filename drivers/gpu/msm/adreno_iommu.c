@@ -1,4 +1,5 @@
 /* Copyright (c) 2002,2007-2018, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -13,6 +14,7 @@
 #include "adreno.h"
 #include "kgsl_sharedmem.h"
 #include "a3xx_reg.h"
+#include "a6xx_reg.h"
 #include "adreno_pm4types.h"
 
 #define A5XX_PFP_PER_PROCESS_UCODE_VER 0x5FF064
@@ -586,6 +588,12 @@ static unsigned int _adreno_iommu_set_pt_v2_a6xx(struct kgsl_device *device,
 	cmds += _adreno_iommu_add_idle_cmds(adreno_dev, cmds);
 	cmds += cp_wait_for_me(adreno_dev, cmds);
 
+	/* Clear performance counters during contect switches */
+	if (!adreno_dev->perfcounter) {
+		*cmds++ = cp_type4_packet(A6XX_RBBM_PERFCTR_SRAM_INIT_CMD, 1);
+		*cmds++ = 0x1;
+	}
+
 	/* CP switches the pagetable and flushes the Caches */
 	*cmds++ = cp_packet(adreno_dev, CP_SMMU_TABLE_UPDATE, 4);
 	*cmds++ = lower_32_bits(ttbr0);
@@ -604,6 +612,17 @@ static unsigned int _adreno_iommu_set_pt_v2_a6xx(struct kgsl_device *device,
 	cmds += cp_wait_for_me(adreno_dev, cmds);
 
 	cmds += _adreno_iommu_add_idle_cmds(adreno_dev, cmds);
+
+	/* Wait for performance counter clear to finish */
+	if (!adreno_dev->perfcounter) {
+		*cmds++ = cp_type7_packet(CP_WAIT_REG_MEM, 6);
+		*cmds++ = 0x3;
+		*cmds++ = A6XX_RBBM_PERFCTR_SRAM_INIT_STATUS;
+		*cmds++ = 0x0;
+		*cmds++ = 0x1;
+		*cmds++ = 0x1;
+		*cmds++ = 0x0;
+	}
 
 	return cmds - cmds_orig;
 }
@@ -802,21 +821,15 @@ static int _set_pagetable_cpu(struct adreno_ringbuffer *rb,
 static int _set_pagetable_gpu(struct adreno_ringbuffer *rb,
 			struct kgsl_pagetable *new_pt)
 {
+	static unsigned int link[PAGE_SIZE / sizeof(unsigned int)]
+		____cacheline_aligned_in_smp;
 	struct adreno_device *adreno_dev = ADRENO_RB_DEVICE(rb);
-	unsigned int *link = NULL, *cmds;
+	unsigned int *cmds = link;
 	int result;
 
-	link = kmalloc(PAGE_SIZE, GFP_KERNEL);
-	if (link == NULL)
-		return -ENOMEM;
-
-	cmds = link;
-
 	/* If we are in a fault the MMU will be reset soon */
-	if (test_bit(ADRENO_DEVICE_FAULT, &adreno_dev->priv)) {
-		kfree(link);
+	if (test_bit(ADRENO_DEVICE_FAULT, &adreno_dev->priv))
 		return 0;
-	}
 
 	cmds += adreno_iommu_set_pt_generate_cmds(rb, cmds, new_pt);
 
@@ -838,7 +851,6 @@ static int _set_pagetable_gpu(struct adreno_ringbuffer *rb,
 			KGSL_CMD_FLAGS_PMODE, link,
 			(unsigned int)(cmds - link));
 
-	kfree(link);
 	return result;
 }
 

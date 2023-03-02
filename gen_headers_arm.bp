@@ -474,6 +474,8 @@ gen_headers_out_arm = [
     "linux/qcota.h",
     "linux/qg-profile.h",
     "linux/qg.h",
+    "linux/qbg-profile.h",
+    "linux/qbg.h",
     "linux/qnx4_fs.h",
     "linux/qnxtypes.h",
     "linux/qrng.h",
@@ -525,6 +527,7 @@ gen_headers_out_arm = [
     "linux/shm.h",
     "linux/signal.h",
     "linux/signalfd.h",
+    "linux/slatecom_interface.h",
     "linux/smc.h",
     "linux/smc_diag.h",
     "linux/smcinvoke.h",
@@ -967,9 +970,6 @@ gen_headers_out_arm = [
     "asm/swab.h",
     "asm/types.h",
     "asm/unistd.h",
-    "misc/akm09970.h",
-    "linux/akm09970.h",
-    "misc/drv8846.h",
 ]
 
 genrule {

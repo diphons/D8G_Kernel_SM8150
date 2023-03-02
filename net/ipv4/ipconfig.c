@@ -881,7 +881,7 @@ static void __init ic_bootp_send_if(struct ic_device *d, unsigned long jiffies_d
 
 
 /*
- *  Copy BOOTP-supplied string if not already set.
+ *  Copy BOOTP-supplied string
  */
 static int __init ic_bootp_string(char *dest, char *src, int len, int max)
 {
@@ -930,12 +930,15 @@ static void __init ic_do_bootp_ext(u8 *ext)
 		}
 		break;
 	case 12:	/* Host name */
-		ic_bootp_string(utsname()->nodename, ext+1, *ext,
-				__NEW_UTS_LEN);
-		ic_host_name_set = 1;
+		if (!ic_host_name_set) {
+			ic_bootp_string(utsname()->nodename, ext+1, *ext,
+					__NEW_UTS_LEN);
+			ic_host_name_set = 1;
+		}
 		break;
 	case 15:	/* Domain name (DNS) */
-		ic_bootp_string(ic_domain, ext+1, *ext, sizeof(ic_domain));
+		if (!ic_domain[0])
+			ic_bootp_string(ic_domain, ext+1, *ext, sizeof(ic_domain));
 		break;
 	case 17:	/* Root path */
 		if (!root_server_path[0])
@@ -1320,19 +1323,6 @@ static int pnp_seq_show(struct seq_file *seq, void *v)
 			   &ic_servaddr);
 	return 0;
 }
-
-static int pnp_seq_open(struct inode *indoe, struct file *file)
-{
-	return single_open(file, pnp_seq_show, NULL);
-}
-
-static const struct file_operations pnp_seq_fops = {
-	.owner		= THIS_MODULE,
-	.open		= pnp_seq_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
 #endif /* CONFIG_PROC_FS */
 
 /*
@@ -1415,7 +1405,7 @@ static int __init ip_auto_config(void)
 		ic_nameservers_predef();
 
 #ifdef CONFIG_PROC_FS
-	proc_create("pnp", S_IRUGO, init_net.proc_net, &pnp_seq_fops);
+	proc_create_single("pnp", S_IRUGO, init_net.proc_net, pnp_seq_show);
 #endif /* CONFIG_PROC_FS */
 
 	if (!ic_enable)

@@ -724,10 +724,10 @@ static ssize_t v4l_stk_read(struct file *fp, char __user *buf,
 	return ret;
 }
 
-static unsigned int v4l_stk_poll(struct file *fp, poll_table *wait)
+static __poll_t v4l_stk_poll(struct file *fp, poll_table *wait)
 {
 	struct stk_camera *dev = video_drvdata(fp);
-	unsigned res = v4l2_ctrl_poll(fp, wait);
+	__poll_t res = v4l2_ctrl_poll(fp, wait);
 
 	poll_wait(fp, &dev->wait_frame, wait);
 
@@ -1355,7 +1355,7 @@ static int stk_camera_probe(struct usb_interface *interface,
 	if (!dev->isoc_ep) {
 		pr_err("Could not find isoc-in endpoint\n");
 		err = -ENODEV;
-		goto error;
+		goto error_put;
 	}
 	dev->vsettings.palette = V4L2_PIX_FMT_RGB565;
 	dev->vsettings.mode = MODE_VGA;
@@ -1368,10 +1368,12 @@ static int stk_camera_probe(struct usb_interface *interface,
 
 	err = stk_register_video_device(dev);
 	if (err)
-		goto error;
+		goto error_put;
 
 	return 0;
 
+error_put:
+	usb_put_intf(interface);
 error:
 	v4l2_ctrl_handler_free(hdl);
 	v4l2_device_unregister(&dev->v4l2_dev);

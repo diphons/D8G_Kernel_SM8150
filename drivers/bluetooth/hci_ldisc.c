@@ -541,6 +541,7 @@ static void hci_uart_tty_close(struct tty_struct *tty)
 		clear_bit(HCI_UART_PROTO_READY, &hu->flags);
 		percpu_up_write(&hu->proto_lock);
 
+		cancel_work_sync(&hu->init_ready);
 		cancel_work_sync(&hu->write_work);
 
 		if (hdev) {
@@ -815,7 +816,7 @@ static ssize_t hci_uart_tty_write(struct tty_struct *tty, struct file *file,
 	return 0;
 }
 
-static unsigned int hci_uart_tty_poll(struct tty_struct *tty,
+static __poll_t hci_uart_tty_poll(struct tty_struct *tty,
 				      struct file *filp, poll_table *wait)
 {
 	return 0;

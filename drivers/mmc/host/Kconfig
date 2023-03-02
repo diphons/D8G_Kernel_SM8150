@@ -397,7 +397,7 @@ config MMC_OMAP_HS
 
 config MMC_WBSD
 	tristate "Winbond W83L51xD SD/MMC Card Interface support"
-	depends on ISA_DMA_API
+	depends on ISA_DMA_API && !M68K
 	help
 	  This selects the Winbond(R) W83L51xD Secure digital and
           Multimedia card Interface.
@@ -930,3 +930,9 @@ config MMC_CQ_HCI_CRYPTO_QTI
 	 Enable Vendor Crypto Engine Support in CQHCI
 	 Enabling this allows kernel to use CQHCI crypto operations defined
 	 and implemented by QTI.
+
+config MMC_QTI_NONCMDQ_ICE
+	bool "Vendor support Legacy Inline Crypto Engine"
+	default n
+	help
+	Enable to allow use of Legacy Inline Crypto Engine i.e ICE < 3.0.

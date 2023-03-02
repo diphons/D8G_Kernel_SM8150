@@ -125,7 +125,7 @@ static ssize_t xenbus_file_read(struct file *filp,
 {
 	struct xenbus_file_priv *u = filp->private_data;
 	struct read_buffer *rb;
-	unsigned i;
+	ssize_t i;
 	int ret;
 
 	mutex_lock(&u->reply_mutex);
@@ -145,7 +145,7 @@ again:
 	rb = list_entry(u->read_buffers.next, struct read_buffer, list);
 	i = 0;
 	while (i < len) {
-		unsigned sz = min((unsigned)len - i, rb->len - rb->cons);
+		size_t sz = min_t(size_t, len - i, rb->len - rb->cons);
 
 		ret = copy_to_user(ubuf + i, &rb->msg[rb->cons], sz);
 
@@ -660,7 +660,7 @@ static int xenbus_file_release(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static unsigned int xenbus_file_poll(struct file *file, poll_table *wait)
+static __poll_t xenbus_file_poll(struct file *file, poll_table *wait)
 {
 	struct xenbus_file_priv *u = file->private_data;
 

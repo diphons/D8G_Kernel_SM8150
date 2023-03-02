@@ -1315,12 +1315,12 @@ static ssize_t ucma_set_option(struct ucma_file *file, const char __user *inbuf,
 	if (copy_from_user(&cmd, inbuf, sizeof(cmd)))
 		return -EFAULT;
 
+	if (unlikely(cmd.optlen > KMALLOC_MAX_SIZE))
+		return -EINVAL;
+
 	ctx = ucma_get_ctx(file, cmd.id);
 	if (IS_ERR(ctx))
 		return PTR_ERR(ctx);
-
-	if (unlikely(cmd.optlen > KMALLOC_MAX_SIZE))
-		return -EINVAL;
 
 	optval = memdup_user((void __user *) (unsigned long) cmd.optval,
 			     cmd.optlen);
@@ -1676,10 +1676,10 @@ static ssize_t ucma_write(struct file *filp, const char __user *buf,
 	return ret;
 }
 
-static unsigned int ucma_poll(struct file *filp, struct poll_table_struct *wait)
+static __poll_t ucma_poll(struct file *filp, struct poll_table_struct *wait)
 {
 	struct ucma_file *file = filp->private_data;
-	unsigned int mask = 0;
+	__poll_t mask = 0;
 
 	poll_wait(filp, &file->poll_wait, wait);
 

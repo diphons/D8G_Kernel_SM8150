@@ -34,6 +34,7 @@
 #include <linux/fb.h>
 #include <linux/fbcon.h>
 #include <linux/mem_encrypt.h>
+#include <linux/overflow.h>
 
 #include <asm/fb.h>
 
@@ -720,19 +721,6 @@ static const struct seq_operations proc_fb_seq_ops = {
 	.show	= fb_seq_show,
 };
 
-static int proc_fb_open(struct inode *inode, struct file *file)
-{
-	return seq_open(file, &proc_fb_seq_ops);
-}
-
-static const struct file_operations fb_proc_fops = {
-	.owner		= THIS_MODULE,
-	.open		= proc_fb_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= seq_release,
-};
-
 /*
  * We hold a reference to the fb_info in file->private_data,
  * but if the current registered fb has changed, we don't
@@ -983,6 +971,7 @@ fb_set_var(struct fb_info *info, struct fb_var_screeninfo *var)
 	if ((var->activate & FB_ACTIVATE_FORCE) ||
 	    memcmp(&info->var, var, sizeof(struct fb_var_screeninfo))) {
 		u32 activate = var->activate;
+		u32 unused;
 
 		/* When using FOURCC mode, make sure the red, green, blue and
 		 * transp fields are set to 0.
@@ -1002,6 +991,15 @@ fb_set_var(struct fb_info *info, struct fb_var_screeninfo *var)
 			*var = info->var;
 			goto done;
 		}
+
+		/* bitfill_aligned() assumes that it's at least 8x8 */
+		if (var->xres < 8 || var->yres < 8)
+			return -EINVAL;
+
+		/* Too huge resolution causes multiplication overflow. */
+		if (check_mul_overflow(var->xres, var->yres, &unused) ||
+		    check_mul_overflow(var->xres_virtual, var->yres_virtual, &unused))
+			return -EINVAL;
 
 		ret = info->fbops->fb_check_var(var, info);
 
@@ -1928,7 +1926,7 @@ fbmem_init(void)
 {
 	int ret;
 
-	if (!proc_create("fb", 0, NULL, &fb_proc_fops))
+	if (!proc_create_seq("fb", 0, NULL, &proc_fb_seq_ops))
 		return -ENOMEM;
 
 	ret = register_chrdev(FB_MAJOR, "fb", &fb_fops);

@@ -37,7 +37,6 @@
 
 #include "dsi_panel_mi.h"
 
-
 /**
  * topology is currently defined by a set of following 3 values:
  * 1. num of layer mixers
@@ -572,11 +571,15 @@ static int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 	if (!panel || !panel->cur_mode)
 		return -EINVAL;
 
+
+    pr_info("[%s] commands to be sent for state(%d)\n",panel->name, type);
+
 	mode = panel->cur_mode;
 
 	cmds = mode->priv_info->cmd_sets[type].cmds;
 	count = mode->priv_info->cmd_sets[type].count;
 	state = mode->priv_info->cmd_sets[type].state;
+
 
 	if (count == 0) {
 		pr_debug("[%s] No commands to be sent for state(%d)\n",
@@ -681,6 +684,9 @@ static int dsi_panel_update_backlight(struct dsi_panel *panel,
 	}
 
 	dsi = &panel->mipi_device;
+
+	if (panel->bl_config.bl_inverted_dbv)
+		bl_lvl = (((bl_lvl & 0xff) << 8) | (bl_lvl >> 8));
 
 	if (panel->bl_config.dcs_type_ss)
 		rc = mipi_dsi_dcs_set_display_brightness_ss(dsi, bl_lvl);
@@ -1649,30 +1655,16 @@ static int dsi_panel_parse_dfps_caps(struct dsi_panel *panel)
 		goto error;
 	}
 
-	dfps_caps->dfps_list_len = utils->count_u32_elems(utils->data,
-				  "qcom,dsi-supported-dfps-list");
-	if (dfps_caps->dfps_list_len < 1) {
-		pr_err("[%s] dfps refresh list not present\n", name);
-		rc = -EINVAL;
-		goto error;
-	}
+	dfps_caps->dfps_list_len = 4;
 
 	dfps_caps->dfps_list = kcalloc(dfps_caps->dfps_list_len, sizeof(u32),
 			GFP_KERNEL);
-	if (!dfps_caps->dfps_list) {
-		rc = -ENOMEM;
-		goto error;
-	}
 
-	rc = utils->read_u32_array(utils->data,
-			"qcom,dsi-supported-dfps-list",
-			dfps_caps->dfps_list,
-			dfps_caps->dfps_list_len);
-	if (rc) {
-		pr_err("[%s] dfps refresh rate list parse failed\n", name);
-		rc = -EINVAL;
-		goto error;
-	}
+	dfps_caps->dfps_list[0] = 120;
+	dfps_caps->dfps_list[1] = 90;
+	dfps_caps->dfps_list[2] = 75;
+	dfps_caps->dfps_list[3] = 60;
+
 	dfps_caps->dfps_support = true;
 
 	/* calculate max and min fps */
@@ -2007,6 +1999,19 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-dispparam-crc-off-command",
 	"qcom,mdss-dsi-dispparam-elvss-dimming-off-command",
 	"mi,mdss-dsi-read-lockdown-info-command",
+	"qcom,mdss-dsi-dispparam-cabcuion-command",
+	"qcom,mdss-dsi-dispparam-cabcmovieon-command",
+	"qcom,mdss-dsi-dispparam-cabcstillon-command",
+	"qcom,mdss-dsi-dispparam-cabcoff-command",
+	"qcom,mdss-dsi-dispparam-lcd-hbm-l1-on-command",
+	"qcom,mdss-dsi-dispparam-lcd-hbm-l2-on-command",
+	"qcom,mdss-dsi-dispparam-lcd-hbm-off-command",
+	"qcom,mdss-dsi-dispparam-hbm-on-command",
+	"qcom,mdss-dsi-dispparam-hbm-off-command",
+	"qcom,mdss-dsi-hbm1-on-command",
+	"qcom,mdss-dsi-hbm2-on-command",
+	"qcom,mdss-dsi-dispparam-dimmingon-command",
+	"qcom,mdss-dsi-dispparam-dimmingoff-command"
 };
 
 const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
@@ -2087,6 +2092,19 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-dispparam-crc-off-command-state",
 	"qcom,mdss-dsi-dispparam-elvss-dimming-off-command-state",
 	"mi,mdss-dsi-read-lockdown-info-command-state",
+	"qcom,mdss-dsi-dispparam-cabcuion-command-state",
+	"qcom,mdss-dsi-dispparam-cabcstillon-command-state",
+	"qcom,mdss-dsi-dispparam-cabcmovieon-command-state",
+	"qcom,mdss-dsi-dispparam-cabcoff-command-state",
+	"qcom,mdss-dsi-dispparam-lcd-hbm-l1-on-command-state",
+	"qcom,mdss-dsi-dispparam-lcd-hbm-l2-on-command-state",
+	"qcom,mdss-dsi-dispparam-lcd-hbm-off-command-state",
+	"qcom,mdss-dsi-dispparam-hbm-on-command-state",
+	"qcom,mdss-dsi-hbm1-on-command-state",
+	"qcom,mdss-dsi-hbm2-on-command-state",
+	"qcom,mdss-dsi-dispparam-hbm-off-command-state",
+	"qcom,mdss-dsi-dispparam-dimmingon-command-state",
+	"qcom,mdss-dsi-dispparam-dimmingoff-command-state"
 };
 
 static int dsi_panel_get_cmd_pkt_count(const char *data, u32 length, u32 *cnt)
@@ -2639,6 +2657,9 @@ static int dsi_panel_parse_bl_config(struct dsi_panel *panel)
 		panel->bl_config.brightness_default_level = val;
 	}
 
+	panel->bl_config.bl_inverted_dbv = utils->read_bool(utils->data,
+		"qcom,mdss-dsi-bl-inverted-dbv");
+		
 	panel->bl_config.bl_remap_flag = utils->read_bool(utils->data,
 								"qcom,mdss-brightness-remap");
 
@@ -5460,7 +5481,16 @@ int dsi_panel_enable(struct dsi_panel *panel)
 	}
 
 	mutex_unlock(&panel->panel_lock);
-	pr_info("[SDE] %s: DSI_CMD_SET_ON\n", __func__);
+
+	if (panel->hbm_mode)
+		dsi_panel_apply_hbm_mode(panel);
+
+	if (panel->cabc_mode)
+		dsi_panel_apply_cabc_mode(panel);
+
+	if (panel->dimming_mode)
+		dsi_panel_apply_dimming_mode(panel);
+
 	return rc;
 }
 
@@ -5619,8 +5649,6 @@ error:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
 }
-
-
 
 static int dsi_panel_get_lockdown_from_cmdline(unsigned char *plockdowninfo)
 {
@@ -5846,3 +5874,103 @@ void dsi_panel_doubleclick_enable(bool on)
 	g_panel->tddi_doubleclick_flag = on;
 }
 EXPORT_SYMBOL(dsi_panel_doubleclick_enable);
+
+int dsi_panel_set_feature(struct dsi_panel *panel, enum dsi_cmd_set_type type)
+{
+		int rc = 0;
+
+		if (!panel || type < 0 || type >= DSI_CMD_SET_MAX) {
+			pr_err("Invalid parameter %d\n", type);
+			return -EINVAL;
+		}
+
+		pr_info("xinj:%s panel_initialized=%d type=%d\n", __func__, panel->panel_initialized, type);
+		if (!panel->panel_initialized) {
+			pr_err("xinj: can't set cmds type=%d\n", type);
+			return -EINVAL;
+		}
+
+		mutex_lock(&panel->panel_lock);
+
+		rc = dsi_panel_tx_cmd_set(panel, type);
+		if (rc) {
+			pr_err("[%s] failed to send DSI_CMD_SET_FEATURE_ON/OFF cmds, rc=%d,type=%d\n",
+					panel->name, rc, type);
+		}
+		mutex_unlock(&panel->panel_lock);
+		return rc;
+}
+
+int dsi_panel_apply_hbm_mode(struct dsi_panel *panel)
+{
+	static const enum dsi_cmd_set_type type_map[] = {
+		DSI_CMD_SET_HBM_OFF,
+		DSI_CMD_SET_HBM1_ON,
+		DSI_CMD_SET_HBM2_ON
+	};
+
+	enum dsi_cmd_set_type type;
+//	int rc;
+
+	if (panel->hbm_mode >= 0 &&
+		panel->hbm_mode < ARRAY_SIZE(type_map))
+		type = type_map[panel->hbm_mode];
+	else
+		type = type_map[0];
+
+	//mutex_lock(&panel->panel_lock);
+	//rc = dsi_panel_tx_cmd_set(panel, type);
+	//mutex_unlock(&panel->panel_lock);
+
+	return dsi_panel_set_feature(panel, type);
+}
+
+int dsi_panel_apply_cabc_mode(struct dsi_panel *panel)
+{
+	static const enum dsi_cmd_set_type type_map[] = {
+		DSI_CMD_SET_CABCOFF,
+		DSI_CMD_SET_CABCUION,
+		DSI_CMD_SET_CABCMOVIEON,
+		DSI_CMD_SET_CABCSTILLON
+	};
+
+	enum dsi_cmd_set_type type;
+//	int rc;
+
+	if (panel->cabc_mode >= 0 &&
+		panel->cabc_mode < ARRAY_SIZE(type_map))
+		type = type_map[panel->cabc_mode];
+	else
+		type = type_map[0];
+
+	//mutex_lock(&panel->panel_lock);
+	//rc = dsi_panel_tx_cmd_set(panel, type);
+	//mutex_unlock(&panel->panel_lock);
+
+	return dsi_panel_set_feature(panel, type);
+}
+
+int dsi_panel_apply_dimming_mode(struct dsi_panel *panel)
+{
+	static const enum dsi_cmd_set_type type_map[] = {
+		DSI_CMD_SET_DIMMINGOFF,
+		DSI_CMD_SET_DIMMINGON,
+	};
+
+	enum dsi_cmd_set_type type;
+//	int rc;
+
+	if (panel->dimming_mode >= 0 &&
+		panel->dimming_mode < ARRAY_SIZE(type_map))
+		type = type_map[panel->dimming_mode];
+	else
+		type = type_map[0];
+
+	//mutex_lock(&panel->panel_lock);
+	//rc = dsi_panel_tx_cmd_set(panel, type);
+	//mutex_unlock(&panel->panel_lock);
+
+
+	return dsi_panel_set_feature(panel, type);
+}
+

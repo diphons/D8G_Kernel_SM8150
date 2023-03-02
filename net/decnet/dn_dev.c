@@ -1384,20 +1384,6 @@ static const struct seq_operations dn_dev_seq_ops = {
 	.stop	= dn_dev_seq_stop,
 	.show	= dn_dev_seq_show,
 };
-
-static int dn_dev_seq_open(struct inode *inode, struct file *file)
-{
-	return seq_open(file, &dn_dev_seq_ops);
-}
-
-static const struct file_operations dn_dev_seq_fops = {
-	.owner	 = THIS_MODULE,
-	.open	 = dn_dev_seq_open,
-	.read	 = seq_read,
-	.llseek	 = seq_lseek,
-	.release = seq_release,
-};
-
 #endif /* CONFIG_PROC_FS */
 
 static int addr[2];
@@ -1424,7 +1410,7 @@ void __init dn_dev_init(void)
 	rtnl_register(PF_DECnet, RTM_DELADDR, dn_nl_deladdr, NULL, 0);
 	rtnl_register(PF_DECnet, RTM_GETADDR, NULL, dn_nl_dump_ifaddr, 0);
 
-	proc_create("decnet_dev", S_IRUGO, init_net.proc_net, &dn_dev_seq_fops);
+	proc_create_seq("decnet_dev", S_IRUGO, init_net.proc_net, &dn_dev_seq_ops);
 
 #ifdef CONFIG_SYSCTL
 	{

@@ -299,12 +299,12 @@ static inline void scc_discard_buffers(struct scc_channel *scc)
 	spin_lock_irqsave(&scc->lock, flags);	
 	if (scc->tx_buff != NULL)
 	{
-		dev_kfree_skb(scc->tx_buff);
+		dev_kfree_skb_irq(scc->tx_buff);
 		scc->tx_buff = NULL;
 	}
 	
 	while (!skb_queue_empty(&scc->tx_queue))
-		dev_kfree_skb(skb_dequeue(&scc->tx_queue));
+		dev_kfree_skb_irq(skb_dequeue(&scc->tx_queue));
 
 	spin_unlock_irqrestore(&scc->lock, flags);
 }
@@ -1666,7 +1666,7 @@ static netdev_tx_t scc_net_tx(struct sk_buff *skb, struct net_device *dev)
 	if (skb_queue_len(&scc->tx_queue) > scc->dev->tx_queue_len) {
 		struct sk_buff *skb_del;
 		skb_del = skb_dequeue(&scc->tx_queue);
-		dev_kfree_skb(skb_del);
+		dev_kfree_skb_irq(skb_del);
 	}
 	skb_queue_tail(&scc->tx_queue, skb);
 	netif_trans_update(dev);
@@ -2083,21 +2083,6 @@ static const struct seq_operations scc_net_seq_ops = {
 	.stop   = scc_net_seq_stop,
 	.show   = scc_net_seq_show,
 };
-
-
-static int scc_net_seq_open(struct inode *inode, struct file *file)
-{
-	return seq_open(file, &scc_net_seq_ops);
-}
-
-static const struct file_operations scc_net_seq_fops = {
-	.owner	 = THIS_MODULE,
-	.open	 = scc_net_seq_open,
-	.read	 = seq_read,
-	.llseek	 = seq_lseek,
-	.release = seq_release_private,
-};
-
 #endif /* CONFIG_PROC_FS */
 
  
@@ -2121,7 +2106,7 @@ static int __init scc_init_driver (void)
 	}
 	rtnl_unlock();
 
-	proc_create("z8530drv", 0, init_net.proc_net, &scc_net_seq_fops);
+	proc_create_seq("z8530drv", 0, init_net.proc_net, &scc_net_seq_ops);
 
 	return 0;
 }

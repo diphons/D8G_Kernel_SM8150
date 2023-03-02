@@ -8,6 +8,8 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
+ *
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __SMB5_CHARGER_H
@@ -107,6 +109,7 @@ enum print_reason {
 #define MAIN_FCC_VOTER			"MAIN_FCC_VOTER"
 #define DCIN_AICL_VOTER			"DCIN_AICL_VOTER"
 #define OVERHEAT_LIMIT_VOTER		"OVERHEAT_LIMIT_VOTER"
+#define GPIO_DCIN_VOTER			"GPIO_DCIN_VOTER"
 
 #define FCC_VOTER			"FCC_VOTER"
 #define ICL_CHANGE_VOTER		"ICL_CHANGE_VOTER"
@@ -119,6 +122,7 @@ enum print_reason {
 #define MAIN_CHG_VOTER			"MAIN_CHG_VOTER"
 #define HVDCP3_START_ICL_VOTER	"HVDCP3_START_ICL_VOTER"
 #define MAIN_CHG_SUSPEND_VOTER			"MAIN_CHG_SUSPEND_VOTER"
+#define BATT_LN8000_VOTER		"BATT_LN8000_VOTER"
 
 #define WLS_FCC_VOTER			"WLS_FCC_VOTER"
 
@@ -134,11 +138,7 @@ enum print_reason {
 #define MAX_PULSE			38
 #define MAX_PLUSE_COUNT_ALLOWED		30
 #define HIGH_NUM_PULSE_THR		12
-#if defined(CONFIG_QPNP_SMB5_VAYU)
-#define PD_UNVERIFED_CURRENT           4800000
-#else
-#define PD_UNVERIFED_CURRENT		3000000
-#endif
+#define PD_UNVERIFED_CURRENT		4800000
 #define PD_UNVERIFED_VOLTAGE		4450000
 #define PD_REMOVE_COMP_CURRENT		7000000
 
@@ -695,6 +695,7 @@ struct smb_charger {
 	struct delayed_work	role_reversal_check;
 	struct delayed_work	pr_swap_detach_work;
 	struct delayed_work	pr_lock_clear_work;
+	struct delayed_work	micro_usb_switch_work;
 
 	struct delayed_work	check_vbus_work;
 	struct delayed_work     check_init_boot;
@@ -961,6 +962,16 @@ struct smb_charger {
 	int			wls_cp_vin;
 	int64_t oob_rpp_msg_cnt;
 	int64_t oob_cep_msg_cnt;
+	/* GPIO DCIN Supply */
+	int			micro_usb_gpio;
+	int			micro_usb_irq;
+	int			dc_9v_gpio;
+	int			dc_9v_irq;
+	int			usb_switch_gpio;
+	int			usb_hub_33v_en_gpio;
+	int			micro_usb_pre_state;
+	bool			dcin_uusb_over_gpio_en;
+	bool			aicl_disable;
 };
 
 int smblib_read(struct smb_charger *chg, u16 addr, u8 *val);
@@ -1023,6 +1034,7 @@ irqreturn_t typec_or_rid_detection_change_irq_handler(int irq, void *data);
 irqreturn_t temp_change_irq_handler(int irq, void *data);
 irqreturn_t usbin_ov_irq_handler(int irq, void *data);
 irqreturn_t sdam_sts_change_irq_handler(int irq, void *data);
+irqreturn_t smb_micro_usb_irq_handler(int irq, void *data);
 int smblib_get_prop_input_suspend(struct smb_charger *chg,
 				union power_supply_propval *val);
 int smblib_get_prop_batt_present(struct smb_charger *chg,
@@ -1222,9 +1234,7 @@ void smblib_apsd_enable(struct smb_charger *chg, bool enable);
 int smblib_force_vbus_voltage(struct smb_charger *chg, u8 val);
 int smblib_get_irq_status(struct smb_charger *chg,
 		union power_supply_propval *val);
-#ifdef CONFIG_QPNP_SMB5_VAYU
 int smb5_config_iterm(struct smb_charger *chg, int hi_thresh, int low_thresh);
-#endif
 int smblib_get_prop_battery_charging_enabled(struct smb_charger *chg,
 				union power_supply_propval *val);
 int smblib_get_prop_battery_charging_limited(struct smb_charger *chg,

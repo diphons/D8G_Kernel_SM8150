@@ -194,8 +194,6 @@ static int cryptomgr_schedule_probe(struct crypto_larval *larval)
 	if (IS_ERR(thread))
 		goto err_put_larval;
 
-	wait_for_completion_interruptible(&larval->completion);
-
 	return NOTIFY_STOP;
 
 err_put_larval:
@@ -295,7 +293,13 @@ static void __exit cryptomgr_exit(void)
 	BUG_ON(err);
 }
 
-subsys_initcall(cryptomgr_init);
+/*
+ * This is arch_initcall() so that the crypto self-tests are run on algorithms
+ * registered early by subsys_initcall().  subsys_initcall() is needed for
+ * generic implementations so that they're available for comparison tests when
+ * other implementations are registered later by module_init().
+ */
+arch_initcall(cryptomgr_init);
 module_exit(cryptomgr_exit);
 
 MODULE_LICENSE("GPL");

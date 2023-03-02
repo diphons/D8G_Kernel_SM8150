@@ -147,7 +147,7 @@ static long rtc_ioctl(struct file *file, unsigned int cmd, unsigned long arg);
 static void rtc_get_rtc_time(struct rtc_time *rtc_tm);
 
 #ifdef RTC_IRQ
-static unsigned int rtc_poll(struct file *file, poll_table *wait);
+static __poll_t rtc_poll(struct file *file, poll_table *wait);
 #endif
 
 static void get_rtc_alm_time(struct rtc_time *alm_tm);
@@ -171,7 +171,7 @@ static void mask_rtc_irq_bit(unsigned char bit)
 #endif
 
 #ifdef CONFIG_PROC_FS
-static int rtc_proc_open(struct inode *inode, struct file *file);
+static int rtc_proc_show(struct seq_file *seq, void *v);
 #endif
 
 /*
@@ -790,7 +790,7 @@ no_irq:
 }
 
 #ifdef RTC_IRQ
-static unsigned int rtc_poll(struct file *file, poll_table *wait)
+static __poll_t rtc_poll(struct file *file, poll_table *wait)
 {
 	unsigned long l;
 
@@ -914,16 +914,6 @@ static struct miscdevice rtc_dev = {
 	.name		= "rtc",
 	.fops		= &rtc_fops,
 };
-
-#ifdef CONFIG_PROC_FS
-static const struct file_operations rtc_proc_fops = {
-	.owner		= THIS_MODULE,
-	.open		= rtc_proc_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-#endif
 
 static resource_size_t rtc_size;
 
@@ -1065,7 +1055,7 @@ no_irq:
 	}
 
 #ifdef CONFIG_PROC_FS
-	ent = proc_create("driver/rtc", 0, NULL, &rtc_proc_fops);
+	ent = proc_create_single("driver/rtc", 0, NULL, rtc_proc_show);
 	if (!ent)
 		printk(KERN_WARNING "rtc: Failed to register with procfs.\n");
 #endif
@@ -1283,11 +1273,6 @@ static int rtc_proc_show(struct seq_file *seq, void *v)
 	return  0;
 #undef YN
 #undef NY
-}
-
-static int rtc_proc_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, rtc_proc_show, NULL);
 }
 #endif
 

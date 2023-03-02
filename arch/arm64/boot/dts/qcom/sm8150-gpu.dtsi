@@ -82,8 +82,7 @@
 		qcom,gpu-quirk-secvid-set-once;
 		qcom,gpu-quirk-cx-gdsc;
 
-		qcom,idle-timeout = <80>; //msecs
-		qcom,no-nap;
+		qcom,idle-timeout = <58>; //msecs
 
 		qcom,highest-bank-bit = <15>;
 
@@ -150,36 +149,6 @@
 		/* GPU related llc slices */
 		cache-slice-names = "gpu", "gpuhtw";
 		cache-slices = <&llcc 12>, <&llcc 11>;
-
-
-		qcom,gpu-coresights {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			compatible = "qcom,gpu-coresight";
-
-			qcom,gpu-coresight@0 {
-				reg = <0>;
-				coresight-name = "coresight-gfx";
-				coresight-atid = <50>;
-				port {
-					gfx_out_funnel_gfx: endpoint {
-						remote-endpoint =
-						  <&funnel_gfx_in_gfx>;
-					};
-				};
-			};
-			qcom,gpu-coresight@1 {
-				reg = <1>;
-				coresight-name = "coresight-gfx-cx";
-				coresight-atid = <51>;
-				port {
-					gfx_cx_out_funnel_gfx: endpoint {
-						remote-endpoint =
-						  <&funnel_gfx_in_gfx_cx>;
-					};
-				};
-			};
-		};
 
 		qcom,l3-pwrlevels {
 			#address-cells = <1>;
@@ -329,6 +298,7 @@
 		clock-names = "iface_clk", "mem_clk", "mem_iface_clk";
 
 		qcom,secure_align_mask = <0xfff>;
+		qcom,unmap_fast;
 		qcom,retention;
 		qcom,hyp_secure_alloc;
 
@@ -398,7 +368,7 @@
 
 			qcom,gmu-pwrlevel@1 {
 				reg = <1>;
-				qcom,gmu-freq = <200000000>;
+				qcom,gmu-freq = <500000000>;
 			};
 		};
 

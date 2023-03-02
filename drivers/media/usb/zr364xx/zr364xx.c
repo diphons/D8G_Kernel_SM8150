@@ -1061,6 +1061,7 @@ static int zr364xx_start_readpipe(struct zr364xx_camera *cam)
 	DBG("submitting URB %p\n", pipe_info->stream_urb);
 	retval = usb_submit_urb(pipe_info->stream_urb, GFP_KERNEL);
 	if (retval) {
+		usb_free_urb(pipe_info->stream_urb);
 		printk(KERN_ERR KBUILD_MODNAME ": start read pipe failed\n");
 		return retval;
 	}
@@ -1290,12 +1291,12 @@ static int zr364xx_mmap(struct file *file, struct vm_area_struct *vma)
 	return ret;
 }
 
-static unsigned int zr364xx_poll(struct file *file,
+static __poll_t zr364xx_poll(struct file *file,
 			       struct poll_table_struct *wait)
 {
 	struct zr364xx_camera *cam = video_drvdata(file);
 	struct videobuf_queue *q = &cam->vb_vidq;
-	unsigned res = v4l2_ctrl_poll(file, wait);
+	__poll_t res = v4l2_ctrl_poll(file, wait);
 
 	_DBG("%s\n", __func__);
 

@@ -42,13 +42,13 @@ static inline struct cec_devnode *cec_devnode_data(struct file *filp)
 
 /* CEC file operations */
 
-static unsigned int cec_poll(struct file *filp,
+static __poll_t cec_poll(struct file *filp,
 			     struct poll_table_struct *poll)
 {
 	struct cec_devnode *devnode = cec_devnode_data(filp);
 	struct cec_fh *fh = filp->private_data;
 	struct cec_adapter *adap = fh->adap;
-	unsigned int res = 0;
+	__poll_t res = 0;
 
 	if (!devnode->registered)
 		return POLLERR | POLLHUP;
@@ -159,7 +159,13 @@ static long cec_adap_g_log_addrs(struct cec_adapter *adap,
 	struct cec_log_addrs log_addrs;
 
 	mutex_lock(&adap->lock);
-	log_addrs = adap->log_addrs;
+	/*
+	 * We use memcpy here instead of assignment since there is a
+	 * hole at the end of struct cec_log_addrs that an assignment
+	 * might ignore. So when we do copy_to_user() we could leak
+	 * one byte of memory.
+	 */
+	memcpy(&log_addrs, &adap->log_addrs, sizeof(log_addrs));
 	if (!adap->is_configured)
 		memset(log_addrs.log_addr, CEC_LOG_ADDR_INVALID,
 		       sizeof(log_addrs.log_addr));

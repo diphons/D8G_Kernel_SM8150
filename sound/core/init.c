@@ -449,7 +449,7 @@ static int snd_disconnect_release(struct inode *inode, struct file *file)
 	panic("%s(%p, %p) failed!", __func__, inode, file);
 }
 
-static unsigned int snd_disconnect_poll(struct file * file, poll_table * wait)
+static __poll_t snd_disconnect_poll(struct file * file, poll_table * wait)
 {
 	return POLLERR | POLLNVAL;
 }
@@ -510,10 +510,8 @@ int snd_card_disconnect(struct snd_card *card)
 		return 0;
 	}
 	card->shutdown = 1;
-	spin_unlock(&card->files_lock);
 
 	/* replace file->f_op with special dummy operations */
-	spin_lock(&card->files_lock);
 	list_for_each_entry(mfile, &card->files_list, list) {
 		/* it's critical part, use endless loop */
 		/* we have no room to fail */

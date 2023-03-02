@@ -127,9 +127,9 @@ static loff_t snd_info_entry_llseek(struct file *file, loff_t offset, int orig)
 	entry = data->entry;
 	mutex_lock(&entry->access);
 	if (entry->c.ops->llseek) {
-		offset = entry->c.ops->llseek(entry,
-					      data->file_private_data,
-					      file, offset, orig);
+		ret = entry->c.ops->llseek(entry,
+					   data->file_private_data,
+					   file, offset, orig);
 		goto out;
 	}
 
@@ -203,11 +203,11 @@ static ssize_t snd_info_entry_write(struct file *file, const char __user *buffer
 	return size;
 }
 
-static unsigned int snd_info_entry_poll(struct file *file, poll_table *wait)
+static __poll_t snd_info_entry_poll(struct file *file, poll_table *wait)
 {
 	struct snd_info_private_data *data = file->private_data;
 	struct snd_info_entry *entry = data->entry;
-	unsigned int mask = 0;
+	__poll_t mask = 0;
 
 	if (entry->c.ops->poll)
 		return entry->c.ops->poll(entry,
@@ -645,7 +645,9 @@ int snd_info_get_line(struct snd_info_buffer *buffer, char *line, int len)
 {
 	int c = -1;
 
-	if (snd_BUG_ON(!buffer || !buffer->buffer))
+	if (snd_BUG_ON(!buffer))
+		return 1;
+	if (!buffer->buffer)
 		return 1;
 	if (len <= 0 || buffer->stop || buffer->error)
 		return 1;

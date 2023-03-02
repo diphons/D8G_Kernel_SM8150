@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2013, Sony Mobile Communications AB.
- * Copyright (c) 2013-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2013-2021, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -40,8 +40,6 @@
 #include "../pinconf.h"
 #include "pinctrl-msm.h"
 #include "../pinctrl-utils.h"
-#include <linux/wakeup_reason.h>
-#include <soc/qcom/socinfo.h>
 #include <linux/suspend.h>
 #ifdef CONFIG_HIBERNATION
 #include <linux/notifier.h>
@@ -585,15 +583,6 @@ static void msm_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
 
 #ifdef CONFIG_DEBUG_FS
 #include <linux/seq_file.h>
-#define msm_gpio_debug_output(m, c, fmt, ...)		\
-do {							\
-	if (m)						\
-		seq_printf(m, fmt, ##__VA_ARGS__);	\
-	else if (c)					\
-		pr_cont(fmt, ##__VA_ARGS__);		\
-	else						\
-		pr_info(fmt, ##__VA_ARGS__);		\
-} while (0)
 
 static void msm_gpio_dbg_show_one(struct seq_file *s,
 				  struct pinctrl_dev *pctldev,
@@ -608,7 +597,7 @@ static void msm_gpio_dbg_show_one(struct seq_file *s,
 	int is_out;
 	int drive;
 	int pull;
-	u32 ctl_reg, io_reg, value;
+	u32 ctl_reg;
 
 	static const char * const pulls[] = {
 		"no pull",
@@ -626,12 +615,9 @@ static void msm_gpio_dbg_show_one(struct seq_file *s,
 	drive = (ctl_reg >> g->drv_bit) & 7;
 	pull = (ctl_reg >> g->pull_bit) & 3;
 
-	io_reg = readl(pctrl->regs + g->io_reg);
-	value = (is_out ? io_reg >> g->out_bit : io_reg >> g->in_bit) & 0x1;
-	msm_gpio_debug_output(s, 1, " %-8s: %-3s %d", g->name, is_out ? "out" : "in", func);
-	msm_gpio_debug_output(s, 1, " %dmA", msm_regval_to_drive(drive));
-	msm_gpio_debug_output(s, 1, " %s", pulls[pull]);
-	msm_gpio_debug_output(s, 1, " %s", value ? "high":"low");
+	seq_printf(s, " %-8s: %-3s %d", g->name, is_out ? "out" : "in", func);
+	seq_printf(s, " %dmA", msm_regval_to_drive(drive));
+	seq_printf(s, " %s", pulls[pull]);
 }
 
 static void msm_gpio_dbg_show(struct seq_file *s, struct gpio_chip *chip)
@@ -640,12 +626,13 @@ static void msm_gpio_dbg_show(struct seq_file *s, struct gpio_chip *chip)
 	unsigned i;
 
 	for (i = 0; i < chip->ngpio; i++, gpio++) {
+
 		/* gpio 0~3 is NFC spi, gpio 126~129 is FP spi */
 		if (i < 4 || (i > 125 && i < 130))
 			continue;
 
 		msm_gpio_dbg_show_one(s, NULL, chip, i, gpio);
-		msm_gpio_debug_output(s, 1, "\n");
+		seq_puts(s, "\n");
 	}
 }
 
@@ -1849,8 +1836,6 @@ static void msm_pinctrl_setup_pm_reset(struct msm_pinctrl *pctrl)
 }
 
 #ifdef CONFIG_PM
-extern int msm_show_resume_irq_mask;
-
 #ifdef CONFIG_HIBERNATION
 static bool hibernation;
 
@@ -2052,7 +2037,6 @@ static void msm_pinctrl_resume(void)
 		val = readl_relaxed(pctrl->regs + g->intr_status_reg);
 		if (val & BIT(g->intr_status_bit)) {
 			irq = irq_find_mapping(pctrl->chip.irqdomain, i);
-			log_irq_wakeup_reason(irq);
 			desc = irq_to_desc(irq);
 			if (desc == NULL)
 				name = "stray irq";
@@ -2073,6 +2057,35 @@ static struct syscore_ops msm_pinctrl_pm_ops = {
 	.suspend = msm_pinctrl_suspend,
 	.resume = msm_pinctrl_resume,
 };
+
+/*
+ * msm_gpio_mpm_wake_set - API to make interrupt wakeup capable
+ * @gpio:       Gpio number to make interrupt wakeup capable
+ * @enable:     Enable/Disable wakeup capability
+ */
+int msm_gpio_mpm_wake_set(unsigned int gpio, bool enable)
+{
+	const struct msm_pingroup *g;
+	unsigned long flags;
+	u32 val;
+
+	g = &msm_pinctrl_data->soc->groups[gpio];
+	if (g->wake_bit == -1)
+		return -ENOENT;
+
+	raw_spin_lock_irqsave(&msm_pinctrl_data->lock, flags);
+	val = readl_relaxed(msm_pinctrl_data->regs + g->wake_reg);
+	if (enable)
+		val |= BIT(g->wake_bit);
+	else
+		val &= ~BIT(g->wake_bit);
+
+	writel_relaxed(val, msm_pinctrl_data->regs + g->wake_reg);
+	raw_spin_unlock_irqrestore(&msm_pinctrl_data->lock, flags);
+
+	return 0;
+}
+EXPORT_SYMBOL(msm_gpio_mpm_wake_set);
 
 int msm_pinctrl_probe(struct platform_device *pdev,
 		      const struct msm_pinctrl_soc_data *soc_data)

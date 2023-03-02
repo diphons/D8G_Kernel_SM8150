@@ -21,11 +21,11 @@
 #define UFS_ANY_VENDOR 0xFFFF
 #define UFS_ANY_MODEL  "ANY_MODEL"
 
+#define UFS_VENDOR_MICRON      0x12C
 #define UFS_VENDOR_TOSHIBA     0x198
 #define UFS_VENDOR_SAMSUNG     0x1CE
 #define UFS_VENDOR_SKHYNIX     0x1AD
 #define UFS_VENDOR_WDC		0x145
-#define UFS_VENDOR_SANDISK     0x0145
 
 /**
  * ufs_dev_fix - ufs device quirk info
@@ -148,14 +148,6 @@ struct ufs_dev_fix {
  * from the HIBERN8 state. Enable this quirk to give UFS devices 50us delay
  * instead of the default delay.
  */
-#define UFS_DEVICE_QUIRK_WAIT_AFTER_REF_CLK_UNGATE	(1 << 10)
-
-/*
-* Some UFS devices need more delay after device reference clk is turned on
-* but before initiation of the state transition to STALL from a LS-MODE or
-* from the HIBERN8 state. Enable this quirk to give UFS devices 50us delay
-* instead of the default delay.
-*/
 #define UFS_DEVICE_QUIRK_WAIT_AFTER_REF_CLK_UNGATE	(1 << 10)
 
 #endif /* UFS_QUIRKS_H_ */

@@ -30,6 +30,7 @@
 #include <linux/suspend.h>
 #include <linux/syscore_ops.h>
 #include <linux/tick.h>
+#include <linux/hid_magic.h>
 #include <linux/sched/topology.h>
 #include <linux/sched/sysctl.h>
 
@@ -236,7 +237,7 @@ struct cpufreq_policy *cpufreq_cpu_get(unsigned int cpu)
 	struct cpufreq_policy *policy = NULL;
 	unsigned long flags;
 
-	if (WARN_ON(cpu >= nr_cpu_ids))
+	if (cpu >= nr_cpu_ids)
 		return NULL;
 
 	/* get the cpufreq driver */
@@ -725,6 +726,9 @@ static ssize_t store_##file_name					\
 {									\
 	int ret, temp;							\
 	struct cpufreq_policy new_policy;				\
+									\
+	if (&policy->object == &policy->min)				\
+		return count;						\
 									\
 	memcpy(&new_policy, policy, sizeof(*policy));			\
 	new_policy.min = policy->user_policy.min;			\
@@ -2259,6 +2263,8 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 	if (ret)
 		return ret;
 
+	restrict_frequency(new_policy);
+
 	/* adjust if necessary - all reasons */
 	blocking_notifier_call_chain(&cpufreq_policy_notifier_list,
 			CPUFREQ_ADJUST, new_policy);
@@ -2266,10 +2272,6 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 	/* adjust if necessary - hardware incompatibility */
 	blocking_notifier_call_chain(&cpufreq_policy_notifier_list,
 			CPUFREQ_INCOMPATIBLE, new_policy);
-
-	/* the adjusted frequency should not exceed thermal limit */
-	blocking_notifier_call_chain(&cpufreq_policy_notifier_list,
-			CPUFREQ_THERMAL, new_policy);
 
 	/*
 	 * verify the cpu speed can be set within this limit, which might be
@@ -2388,6 +2390,23 @@ unlock:
 	cpufreq_cpu_put(policy);
 }
 EXPORT_SYMBOL(cpufreq_update_policy);
+
+int cpufreq_policy_reset_limit(void)
+{
+	struct cpufreq_policy *policy;
+	struct cpufreq_policy new_policy;
+	int ret;
+
+	for_each_policy(policy) {
+		memcpy(&new_policy, policy, sizeof(*policy));
+		new_policy.max = policy->cpuinfo.max_freq;
+		ret = cpufreq_set_policy(policy, &new_policy);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
 
 /*********************************************************************
  *               BOOST						     *

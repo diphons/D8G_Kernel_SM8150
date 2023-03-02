@@ -624,7 +624,7 @@
 
 		trips {
 			ibat_lvl1:ibat-lvl1 {
-				temperature = <5000>;
+				temperature = <8000>;
 				hysteresis = <200>;
 				type = "passive";
 			};
@@ -740,7 +740,7 @@
 		disable-thermal-zone;
 		trips {
 			soc_trip:soc-trip {
-				temperature = <10>;
+				temperature = <5>;
 				hysteresis = <0>;
 				type = "passive";
 			};

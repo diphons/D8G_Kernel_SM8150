@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * fs/f2fs/acl.h
  *
@@ -13,6 +13,7 @@
 #define __F2FS_ACL_H__
 
 #include <linux/posix_acl_xattr.h>
+#include <notrace.h>
 
 #define F2FS_ACL_VERSION	0x0001
 

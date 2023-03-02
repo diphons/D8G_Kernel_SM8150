@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * f2fs IO tracer
  *
@@ -9,7 +9,7 @@
 #define __F2FS_TRACE_H__
 
 #ifdef CONFIG_F2FS_IO_TRACE
-#include <trace/events/f2fs.h>
+#include <notrace.h>
 
 enum file_type {
 	__NORMAL_FILE,

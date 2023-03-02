@@ -68,7 +68,7 @@
 static int enable_lmk = 1;
 module_param_named(enable_lmk, enable_lmk, int, 0644);
 
-static u32 lowmem_debug_level = 1;
+static u32 lowmem_debug_level = 0;
 static short lowmem_adj[6] = {
 	0,
 	1,
@@ -521,13 +521,13 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 		     __func__, sc->nr_to_scan, sc->gfp_mask, other_free,
 		     other_file, min_score_adj);
 
-	if (min_score_adj == OOM_SCORE_ADJ_MAX + 1 || (ret == VMPRESSURE_ADJUST_ENCROACH)) {
+	if (min_score_adj == OOM_SCORE_ADJ_MAX + 1) {
 		trace_almk_shrink(0, ret, other_free, other_file, 0);
 		lowmem_print(5, "%s %lu, %x, return 0\n",
 			     __func__, sc->nr_to_scan, sc->gfp_mask);
 		if (lock_required)
 			mutex_unlock(&scan_mutex);
-		return SHRINK_STOP;
+		return 0;
 	}
 
 	selected_oom_score_adj = min_score_adj;
@@ -682,10 +682,7 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 		     __func__, sc->nr_to_scan, sc->gfp_mask, rem);
 	if (lock_required)
 		mutex_unlock(&scan_mutex);
-	if (rem == 0)
-		return SHRINK_STOP;
-	else
-		return rem;
+	return rem;
 }
 
 static int lmk_hotplug_callback(struct notifier_block *self,

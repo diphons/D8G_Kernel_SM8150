@@ -47,18 +47,6 @@ nubus_devices_proc_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-static int nubus_devices_proc_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, nubus_devices_proc_show, NULL);
-}
-
-static const struct file_operations nubus_devices_proc_fops = {
-	.open		= nubus_devices_proc_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
 static struct proc_dir_entry *proc_bus_nubus_dir;
 
 static const struct file_operations nubus_proc_subdir_fops = {
@@ -203,18 +191,6 @@ static const struct seq_operations nubus_proc_seqops = {
 	.show	= nubus_proc_show,
 };
 
-static int nubus_proc_open(struct inode *inode, struct file *file)
-{
-	return seq_open(file, &nubus_proc_seqops);
-}
-
-static const struct file_operations nubus_proc_fops = {
-	.open		= nubus_proc_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= seq_release,
-};
-
 void __init proc_bus_nubus_add_devices(void)
 {
 	struct nubus_dev *dev;
@@ -225,10 +201,11 @@ void __init proc_bus_nubus_add_devices(void)
 
 void __init nubus_proc_init(void)
 {
-	proc_create("nubus", 0, NULL, &nubus_proc_fops);
+	proc_create_single("nubus", 0, NULL, &nubus_proc_show);
 	if (!MACH_IS_MAC)
 		return;
 	proc_bus_nubus_dir = proc_mkdir("bus/nubus", NULL);
-	proc_create("devices", 0, proc_bus_nubus_dir, &nubus_devices_proc_fops);
+	proc_create_single("devices", 0, proc_bus_nubus_dir, 
+			nubus_devices_proc_show);
 	proc_bus_nubus_add_devices();
 }

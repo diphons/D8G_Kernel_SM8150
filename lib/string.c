@@ -158,11 +158,9 @@ EXPORT_SYMBOL(strlcpy);
  * @src: Where to copy the string from
  * @count: Size of destination buffer
  *
- * Copy the string, or as much of it as fits, into the dest buffer.
- * The routine returns the number of characters copied (not including
- * the trailing NUL) or -E2BIG if the destination buffer wasn't big enough.
- * The behavior is undefined if the string buffers overlap.
- * The destination buffer is always NUL terminated, unless it's zero-sized.
+ * Copy the string, or as much of it as fits, into the dest buffer.  The
+ * behavior is undefined if the string buffers overlap.  The destination
+ * buffer is always NUL terminated, unless it's zero-sized.
  *
  * Preferred to strlcpy() since the API doesn't require reading memory
  * from the src string beyond the specified "count" bytes, and since
@@ -172,8 +170,10 @@ EXPORT_SYMBOL(strlcpy);
  *
  * Preferred to strncpy() since it always returns a valid string, and
  * doesn't unnecessarily force the tail of the destination buffer to be
- * zeroed.  If the zeroing is desired, it's likely cleaner to use strscpy()
- * with an overflow test, then just memset() the tail of the dest buffer.
+ * zeroed.  If zeroing is desired please use strscpy_pad().
+ *
+ * Return: The number of characters copied (not including the trailing
+ *         %NUL) or -E2BIG if the destination buffer wasn't big enough.
  */
 ssize_t strscpy(char *dest, const char *src, size_t count)
 {
@@ -235,6 +235,63 @@ ssize_t strscpy(char *dest, const char *src, size_t count)
 }
 EXPORT_SYMBOL(strscpy);
 #endif
+
+/**
+ * stpcpy - copy a string from src to dest returning a pointer to the new end
+ *          of dest, including src's %NUL-terminator. May overrun dest.
+ * @dest: pointer to end of string being copied into. Must be large enough
+ *        to receive copy.
+ * @src: pointer to the beginning of string being copied from. Must not overlap
+ *       dest.
+ *
+ * stpcpy differs from strcpy in a key way: the return value is a pointer
+ * to the new %NUL-terminating character in @dest. (For strcpy, the return
+ * value is a pointer to the start of @dest). This interface is considered
+ * unsafe as it doesn't perform bounds checking of the inputs. As such it's
+ * not recommended for usage. Instead, its definition is provided in case
+ * the compiler lowers other libcalls to stpcpy.
+ */
+char *stpcpy(char *__restrict__ dest, const char *__restrict__ src);
+char *stpcpy(char *__restrict__ dest, const char *__restrict__ src)
+{
+	while ((*dest++ = *src++) != '\0')
+		/* nothing */;
+	return --dest;
+}
+EXPORT_SYMBOL(stpcpy);
+
+/**
+ * strscpy_pad() - Copy a C-string into a sized buffer
+ * @dest: Where to copy the string to
+ * @src: Where to copy the string from
+ * @count: Size of destination buffer
+ *
+ * Copy the string, or as much of it as fits, into the dest buffer.  The
+ * behavior is undefined if the string buffers overlap.  The destination
+ * buffer is always %NUL terminated, unless it's zero-sized.
+ *
+ * If the source string is shorter than the destination buffer, zeros
+ * the tail of the destination buffer.
+ *
+ * For full explanation of why you may want to consider using the
+ * 'strscpy' functions please see the function docstring for strscpy().
+ *
+ * Return: The number of characters copied (not including the trailing
+ *         %NUL) or -E2BIG if the destination buffer wasn't big enough.
+ */
+ssize_t strscpy_pad(char *dest, const char *src, size_t count)
+{
+	ssize_t written;
+
+	written = strscpy(dest, src, count);
+	if (written < 0 || written == count - 1)
+		return written;
+
+	memset(dest + written + 1, 0, count - written - 1);
+
+	return written;
+}
+EXPORT_SYMBOL(strscpy_pad);
 
 #ifndef __HAVE_ARCH_STRCAT
 /**
@@ -960,24 +1017,61 @@ char *strnstr(const char *s1, const char *s2, size_t len)
 EXPORT_SYMBOL(strnstr);
 #endif
 
+#if defined(CONFIG_ARCH_HAS_FAST_MULTIPLIER) && BITS_PER_LONG == 64
+
+#define MEMCHR_MASK_GEN(mask) (mask *= 0x0101010101010101ULL)
+
+#elif defined(CONFIG_ARCH_HAS_FAST_MULTIPLIER)
+
+#define MEMCHR_MASK_GEN(mask)                                                  \
+	do {                                                                   \
+		mask *= 0x01010101;                                            \
+		mask |= mask << 32;                                            \
+	} while (0)
+
+#else
+
+#define MEMCHR_MASK_GEN(mask)                                                  \
+	do {                                                                   \
+		mask |= mask << 8;                                             \
+		mask |= mask << 16;                                            \
+		mask |= mask << 32;                                            \
+	} while (0)
+
+#endif
+
 #ifndef __HAVE_ARCH_MEMCHR
 /**
  * memchr - Find a character in an area of memory.
- * @s: The memory area
+ * @p: The memory area
  * @c: The byte to search for
- * @n: The size of the area.
+ * @length: The size of the area.
  *
  * returns the address of the first occurrence of @c, or %NULL
  * if @c is not found
  */
-void *memchr(const void *s, int c, size_t n)
+void *memchr(const void *p, int c, unsigned long length)
 {
-	const unsigned char *p = s;
-	while (n-- != 0) {
-        	if ((unsigned char)c == *p++) {
-			return (void *)(p - 1);
+	u64 mask, val;
+	const void *end = p + length;
+
+	c &= 0xff;
+	if (p <= end - 8) {
+		mask = c;
+		MEMCHR_MASK_GEN(mask);
+
+		for (; p <= end - 8; p += 8) {
+			val = *(u64 *)p ^ mask;
+			if ((val + 0xfefefefefefefeffu) &
+			    (~val & 0x8080808080808080u))
+				break;
 		}
 	}
+
+	for (; p < end; p++)
+		if (*(unsigned char *)p == c)
+			return (void *)p;
+
 	return NULL;
 }
 EXPORT_SYMBOL(memchr);
@@ -1013,16 +1107,7 @@ void *memchr_inv(const void *start, int c, size_t bytes)
 		return check_bytes8(start, value, bytes);
 
 	value64 = value;
-#if defined(CONFIG_ARCH_HAS_FAST_MULTIPLIER) && BITS_PER_LONG == 64
-	value64 *= 0x0101010101010101ULL;
-#elif defined(CONFIG_ARCH_HAS_FAST_MULTIPLIER)
-	value64 *= 0x01010101;
-	value64 |= value64 << 32;
-#else
-	value64 |= value64 << 8;
-	value64 |= value64 << 16;
-	value64 |= value64 << 32;
-#endif
+	MEMCHR_MASK_GEN(value64);
 
 	prefix = (unsigned long)start % 8;
 	if (prefix) {

@@ -260,18 +260,6 @@ static int cifs_debug_data_proc_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-static int cifs_debug_data_proc_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, cifs_debug_data_proc_show, NULL);
-}
-
-static const struct file_operations cifs_debug_data_proc_fops = {
-	.open		= cifs_debug_data_proc_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
 #ifdef CONFIG_CIFS_STATS
 static ssize_t cifs_stats_proc_write(struct file *file,
 		const char __user *buffer, size_t count, loff_t *ppos)
@@ -415,7 +403,8 @@ cifs_proc_init(void)
 	if (proc_fs_cifs == NULL)
 		return;
 
-	proc_create("DebugData", 0, proc_fs_cifs, &cifs_debug_data_proc_fops);
+	proc_create_single("DebugData", 0, proc_fs_cifs,
+			cifs_debug_data_proc_show);
 
 #ifdef CONFIG_CIFS_STATS
 	proc_create("Stats", 0, proc_fs_cifs, &cifs_stats_proc_fops);

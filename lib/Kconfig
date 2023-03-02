@@ -16,7 +16,6 @@ config BITREVERSE
 config HAVE_ARCH_BITREVERSE
 	bool
 	default n
-	depends on BITREVERSE
 	help
 	  This option enables the use of hardware bit-reversal instructions on
 	  architectures which support such operations.
@@ -599,9 +598,7 @@ config PRIME_NUMBERS
 config STRING_SELFTEST
 	bool "Test string functions"
 
-config CJSON
-	bool "Lightweight JSON in ANSI C"
-	help
-	  Kernel config option to enable cJSON library
+config CRYPTO_LIB_SHA256
+	tristate
 
 endmenu

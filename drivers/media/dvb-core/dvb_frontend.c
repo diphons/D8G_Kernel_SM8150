@@ -146,7 +146,7 @@ static void __dvb_frontend_free(struct dvb_frontend *fe)
 	struct dvb_frontend_private *fepriv = fe->frontend_priv;
 
 	if (fepriv)
-		dvb_free_device(fepriv->dvbdev);
+		dvb_device_put(fepriv->dvbdev);
 
 	dvb_frontend_invoke_release(fe, fe->ops.release);
 
@@ -2476,7 +2476,7 @@ static int dvb_frontend_ioctl_legacy(struct file *file,
 }
 
 
-static unsigned int dvb_frontend_poll(struct file *file, struct poll_table_struct *wait)
+static __poll_t dvb_frontend_poll(struct file *file, struct poll_table_struct *wait)
 {
 	struct dvb_device *dvbdev = file->private_data;
 	struct dvb_frontend *fe = dvbdev->priv;

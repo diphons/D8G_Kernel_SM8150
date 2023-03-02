@@ -191,10 +191,10 @@ static int init_pmu(void);
 static void pmu_start(void);
 static irqreturn_t via_pmu_interrupt(int irq, void *arg);
 static irqreturn_t gpio1_interrupt(int irq, void *arg);
-static const struct file_operations pmu_info_proc_fops;
-static const struct file_operations pmu_irqstats_proc_fops;
+static int pmu_info_proc_show(struct seq_file *m, void *v);
+static int pmu_irqstats_proc_show(struct seq_file *m, void *v);
+static int pmu_battery_proc_show(struct seq_file *m, void *v);
 static void pmu_pass_intr(unsigned char *data, int len);
-static const struct file_operations pmu_battery_proc_fops;
 static const struct file_operations pmu_options_proc_fops;
 
 #ifdef CONFIG_ADB
@@ -511,13 +511,15 @@ static int __init via_pmu_dev_init(void)
 		for (i=0; i<pmu_battery_count; i++) {
 			char title[16];
 			sprintf(title, "battery_%ld", i);
-			proc_pmu_batt[i] = proc_create_data(title, 0, proc_pmu_root,
-					&pmu_battery_proc_fops, (void *)i);
+			proc_pmu_batt[i] = proc_create_single_data(title, 0,
+					proc_pmu_root, pmu_battery_proc_show,
+					(void *)i);
 		}
 
-		proc_pmu_info = proc_create("info", 0, proc_pmu_root, &pmu_info_proc_fops);
-		proc_pmu_irqstats = proc_create("interrupts", 0, proc_pmu_root,
-						&pmu_irqstats_proc_fops);
+		proc_pmu_info = proc_create_single("info", 0, proc_pmu_root,
+				pmu_info_proc_show);
+		proc_pmu_irqstats = proc_create_single("interrupts", 0,
+				proc_pmu_root, pmu_irqstats_proc_show);
 		proc_pmu_options = proc_create("options", 0600, proc_pmu_root,
 						&pmu_options_proc_fops);
 	}
@@ -812,19 +814,6 @@ static int pmu_info_proc_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-static int pmu_info_proc_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, pmu_info_proc_show, NULL);
-}
-
-static const struct file_operations pmu_info_proc_fops = {
-	.owner		= THIS_MODULE,
-	.open		= pmu_info_proc_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
 static int pmu_irqstats_proc_show(struct seq_file *m, void *v)
 {
 	int i;
@@ -849,19 +838,6 @@ static int pmu_irqstats_proc_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-static int pmu_irqstats_proc_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, pmu_irqstats_proc_show, NULL);
-}
-
-static const struct file_operations pmu_irqstats_proc_fops = {
-	.owner		= THIS_MODULE,
-	.open		= pmu_irqstats_proc_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
 static int pmu_battery_proc_show(struct seq_file *m, void *v)
 {
 	long batnum = (long)m->private;
@@ -875,19 +851,6 @@ static int pmu_battery_proc_show(struct seq_file *m, void *v)
 	seq_printf(m, "time rem.  : %d\n", pmu_batteries[batnum].time_remaining);
 	return 0;
 }
-
-static int pmu_battery_proc_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, pmu_battery_proc_show, PDE_DATA(inode));
-}
-
-static const struct file_operations pmu_battery_proc_fops = {
-	.owner		= THIS_MODULE,
-	.open		= pmu_battery_proc_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
 
 static int pmu_options_proc_show(struct seq_file *m, void *v)
 {
@@ -1440,7 +1403,7 @@ next:
 		pmu_pass_intr(data, len);
 		/* len == 6 is probably a bad check. But how do I
 		 * know what PMU versions send what events here? */
-		if (len == 6) {
+		if (IS_ENABLED(CONFIG_ADB_PMU_EVENT) && len == 6) {
 			via_pmu_event(PMU_EVT_POWER, !!(data[1]&8));
 			via_pmu_event(PMU_EVT_LID, data[1]&1);
 		}
@@ -2158,11 +2121,11 @@ pmu_write(struct file *file, const char __user *buf,
 	return 0;
 }
 
-static unsigned int
+static __poll_t
 pmu_fpoll(struct file *filp, poll_table *wait)
 {
 	struct pmu_private *pp = filp->private_data;
-	unsigned int mask = 0;
+	__poll_t mask = 0;
 	unsigned long flags;
 	
 	if (pp == 0)

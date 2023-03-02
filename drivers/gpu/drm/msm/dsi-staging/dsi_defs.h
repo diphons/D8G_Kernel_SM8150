@@ -362,6 +362,19 @@ enum dsi_cmd_set_type {
 	DSI_CMD_SET_DISP_CRC_OFF,
 	DSI_CMD_SET_DISP_ELVSS_DIMMING_OFF,
 	DSI_CMD_SET_MI_READ_LOCKDOWN_INFO,
+	DSI_CMD_SET_CABCUION, //23
+	DSI_CMD_SET_CABCMOVIEON, //24
+	DSI_CMD_SET_CABCSTILLON, //25
+	DSI_CMD_SET_CABCOFF, //26
+	DSI_CMD_SET_LCD_HBM_L1_ON, //27
+	DSI_CMD_SET_LCD_HBM_L2_ON, //28
+	DSI_CMD_SET_LCD_HBM_OFF, //29
+	DSI_CMD_SET_HBM_ON, //30
+	DSI_CMD_SET_HBM_OFF, //31
+	DSI_CMD_SET_HBM1_ON, //32
+	DSI_CMD_SET_HBM2_ON, //33
+	DSI_CMD_SET_DIMMINGON, //34
+	DSI_CMD_SET_DIMMINGOFF, //35
 	DSI_CMD_SET_MAX
 };
 
@@ -616,7 +629,7 @@ struct dsi_cmd_engine_cfg {
  * @common_config:         Host configuration common to both Video and Cmd mode.
  * @video_engine:          Video engine configuration if panel is in video mode.
  * @cmd_engine:            Cmd engine configuration if panel is in cmd mode.
- * @esc_clk_rate_khz:      Esc clock frequency in Hz.
+ * @esc_clk_rate_hz:      Esc clock frequency in Hz.
  * @bit_clk_rate_hz:       Bit clock frequency in Hz.
  * @bit_clk_rate_hz_override: DSI bit clk rate override from dt/sysfs.
  * @video_timing:          Video timing information of a frame.

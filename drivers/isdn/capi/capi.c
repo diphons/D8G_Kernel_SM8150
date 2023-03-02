@@ -732,11 +732,11 @@ capi_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos
 	return count;
 }
 
-static unsigned int
+static __poll_t
 capi_poll(struct file *file, poll_table *wait)
 {
 	struct capidev *cdev = file->private_data;
-	unsigned int mask = 0;
+	__poll_t mask = 0;
 
 	if (!cdev->ap.applid)
 		return POLLERR;
@@ -1348,19 +1348,6 @@ static int capi20_proc_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-static int capi20_proc_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, capi20_proc_show, NULL);
-}
-
-static const struct file_operations capi20_proc_fops = {
-	.owner		= THIS_MODULE,
-	.open		= capi20_proc_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
 /*
  * /proc/capi/capi20ncci:
  *  applid ncci
@@ -1381,23 +1368,10 @@ static int capi20ncci_proc_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-static int capi20ncci_proc_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, capi20ncci_proc_show, NULL);
-}
-
-static const struct file_operations capi20ncci_proc_fops = {
-	.owner		= THIS_MODULE,
-	.open		= capi20ncci_proc_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
 static void __init proc_init(void)
 {
-	proc_create("capi/capi20", 0, NULL, &capi20_proc_fops);
-	proc_create("capi/capi20ncci", 0, NULL, &capi20ncci_proc_fops);
+	proc_create_single("capi/capi20", 0, NULL, capi20_proc_show);
+	proc_create_single("capi/capi20ncci", 0, NULL, capi20ncci_proc_show);
 }
 
 static void __exit proc_exit(void)

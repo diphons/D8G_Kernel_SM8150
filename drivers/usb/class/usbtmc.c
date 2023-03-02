@@ -1269,10 +1269,10 @@ static int usbtmc_fasync(int fd, struct file *file, int on)
 	return fasync_helper(fd, file, on, &data->fasync);
 }
 
-static unsigned int usbtmc_poll(struct file *file, poll_table *wait)
+static __poll_t usbtmc_poll(struct file *file, poll_table *wait)
 {
 	struct usbtmc_device_data *data = file->private_data;
-	unsigned int mask;
+	__poll_t mask;
 
 	mutex_lock(&data->io_mutex);
 
@@ -1343,16 +1343,10 @@ static void usbtmc_interrupt(struct urb *urb)
 	case -EOVERFLOW:
 		dev_err(dev, "overflow with length %d, actual length is %d\n",
 			data->iin_wMaxPacketSize, urb->actual_length);
-	case -ECONNRESET:
-	case -ENOENT:
-	case -ESHUTDOWN:
-	case -EILSEQ:
-	case -ETIME:
+	default:
 		/* urb terminated, clean up */
 		dev_dbg(dev, "urb terminated, status: %d\n", status);
 		return;
-	default:
-		dev_err(dev, "unknown status received: %d\n", status);
 	}
 exit:
 	rv = usb_submit_urb(urb, GFP_ATOMIC);

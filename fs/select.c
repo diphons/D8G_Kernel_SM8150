@@ -34,7 +34,6 @@
 
 #include <linux/uaccess.h>
 
-
 /*
  * Estimate expected accuracy in ns from a timeval.
  *
@@ -212,7 +211,7 @@ static int pollwake(wait_queue_entry_t *wait, unsigned mode, int sync, void *key
 	struct poll_table_entry *entry;
 
 	entry = container_of(wait, struct poll_table_entry, wait);
-	if (key && !((unsigned long)key & entry->key))
+	if (key && !(key_to_poll(key) & entry->key))
 		return 0;
 	return __pollwake(wait, mode, sync, key);
 }
@@ -440,7 +439,7 @@ get_max:
 
 static inline void wait_key_set(poll_table *wait, unsigned long in,
 				unsigned long out, unsigned long bit,
-				unsigned int ll_flag)
+				__poll_t ll_flag)
 {
 	wait->_key = POLLEX_SET | ll_flag;
 	if (in & bit)
@@ -457,7 +456,7 @@ do_select(int n, fd_set_bits *fds, struct timespec64 *end_time)
 	poll_table *wait;
 	int retval, i, timed_out = 0;
 	u64 slack = 0;
-	unsigned int busy_flag = net_busy_loop_on() ? POLL_BUSY_LOOP : 0;
+	__poll_t busy_flag = net_busy_loop_on() ? POLL_BUSY_LOOP : 0;
 	unsigned long busy_start = 0;
 
 	rcu_read_lock();
@@ -487,8 +486,9 @@ do_select(int n, fd_set_bits *fds, struct timespec64 *end_time)
 		rinp = fds->res_in; routp = fds->res_out; rexp = fds->res_ex;
 
 		for (i = 0; i < n; ++rinp, ++routp, ++rexp) {
-			unsigned long in, out, ex, all_bits, bit = 1, mask, j;
+			unsigned long in, out, ex, all_bits, bit = 1, j;
 			unsigned long res_in = 0, res_out = 0, res_ex = 0;
+			__poll_t mask;
 
 			in = *inp++; out = *outp++; ex = *exp++;
 			all_bits = in | out | ex;
@@ -807,11 +807,11 @@ struct poll_list {
  * pwait poll_table will be used by the fd-provided poll handler for waiting,
  * if pwait->_qproc is non-NULL.
  */
-static inline unsigned int do_pollfd(struct pollfd *pollfd, poll_table *pwait,
+static inline __poll_t do_pollfd(struct pollfd *pollfd, poll_table *pwait,
 				     bool *can_busy_poll,
-				     unsigned int busy_flag)
+				     __poll_t busy_flag)
 {
-	unsigned int mask;
+	__poll_t mask;
 	int fd;
 
 	mask = 0;
@@ -820,20 +820,24 @@ static inline unsigned int do_pollfd(struct pollfd *pollfd, poll_table *pwait,
 		struct fd f = fdget(fd);
 		mask = POLLNVAL;
 		if (f.file) {
+			/* userland u16 ->events contains POLL... bitmap */
+			__poll_t filter = demangle_poll(pollfd->events) |
+						POLLERR | POLLHUP;
 			mask = DEFAULT_POLLMASK;
 			if (f.file->f_op->poll) {
-				pwait->_key = pollfd->events|POLLERR|POLLHUP;
+				pwait->_key = filter;
 				pwait->_key |= busy_flag;
 				mask = f.file->f_op->poll(f.file, pwait);
 				if (mask & busy_flag)
 					*can_busy_poll = true;
 			}
 			/* Mask out unneeded events. */
-			mask &= pollfd->events | POLLERR | POLLHUP;
+			mask &= filter;
 			fdput(f);
 		}
 	}
-	pollfd->revents = mask;
+	/* ... and so does ->revents */
+	pollfd->revents = mangle_poll(mask);
 
 	return mask;
 }
@@ -845,7 +849,7 @@ static int do_poll(struct poll_list *list, struct poll_wqueues *wait,
 	ktime_t expire, *to = NULL;
 	int timed_out = 0, count = 0;
 	u64 slack = 0;
-	unsigned int busy_flag = net_busy_loop_on() ? POLL_BUSY_LOOP : 0;
+	__poll_t busy_flag = net_busy_loop_on() ? POLL_BUSY_LOOP : 0;
 	unsigned long busy_start = 0;
 
 	/* Optimise the no-wait case */
@@ -1007,10 +1011,9 @@ static long do_restart_poll(struct restart_block *restart_block)
 
 	ret = do_sys_poll(ufds, nfds, to);
 
-	if (ret == -EINTR) {
-		restart_block->fn = do_restart_poll;
-		ret = -ERESTART_RESTARTBLOCK;
-	}
+	if (ret == -EINTR)
+		ret = set_restart_fn(restart_block, do_restart_poll);
+
 	return ret;
 }
 
@@ -1032,7 +1035,6 @@ SYSCALL_DEFINE3(poll, struct pollfd __user *, ufds, unsigned int, nfds,
 		struct restart_block *restart_block;
 
 		restart_block = &current->restart_block;
-		restart_block->fn = do_restart_poll;
 		restart_block->poll.ufds = ufds;
 		restart_block->poll.nfds = nfds;
 
@@ -1043,7 +1045,7 @@ SYSCALL_DEFINE3(poll, struct pollfd __user *, ufds, unsigned int, nfds,
 		} else
 			restart_block->poll.has_timeout = 0;
 
-		ret = -ERESTART_RESTARTBLOCK;
+		ret = set_restart_fn(restart_block, do_restart_poll);
 	}
 	return ret;
 }

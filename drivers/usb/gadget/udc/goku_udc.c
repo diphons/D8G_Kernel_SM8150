@@ -1240,22 +1240,6 @@ done:
 	local_irq_restore(flags);
 	return 0;
 }
-
-/*
- * seq_file wrappers for procfile show routines.
- */
-static int udc_proc_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, udc_proc_read, PDE_DATA(file_inode(file)));
-}
-
-static const struct file_operations udc_proc_fops = {
-	.open		= udc_proc_open,
-	.read		= seq_read,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
 #endif	/* CONFIG_USB_GADGET_DEBUG_FILES */
 
 /*-------------------------------------------------------------------------*/
@@ -1772,6 +1756,7 @@ static int goku_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err;
 	}
 
+	pci_set_drvdata(pdev, dev);
 	spin_lock_init(&dev->lock);
 	dev->pdev = pdev;
 	dev->gadget.ops = &goku_ops;
@@ -1805,7 +1790,6 @@ static int goku_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	}
 	dev->regs = (struct goku_udc_regs __iomem *) base;
 
-	pci_set_drvdata(pdev, dev);
 	INFO(dev, "%s\n", driver_desc);
 	INFO(dev, "version: " DRIVER_VERSION " %s\n", dmastr());
 	INFO(dev, "irq %d, pci mem %p\n", pdev->irq, base);
@@ -1825,7 +1809,7 @@ static int goku_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 
 #ifdef CONFIG_USB_GADGET_DEBUG_FILES
-	proc_create_data(proc_node_name, 0, NULL, &udc_proc_fops, dev);
+	proc_create_single_data(proc_node_name, 0, NULL, udc_proc_read, dev);
 #endif
 
 	retval = usb_add_gadget_udc_release(&pdev->dev, &dev->gadget,

@@ -52,7 +52,6 @@
 #include <asm/system_misc.h>
 #include <asm/sysreg.h>
 #include <trace/events/exception.h>
-#include <linux/workqueue.h>
 
 static const char *handler[]= {
 	"Synchronous Abort",
@@ -62,7 +61,6 @@ static const char *handler[]= {
 };
 
 int show_unhandled_signals = 0;
-
 
 static void dump_backtrace_entry(unsigned long where)
 {
@@ -121,9 +119,6 @@ void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 	if (!tsk)
 		tsk = current;
 
-	if (tsk->state == TASK_DEAD)
-		return;
-
 	if (!try_get_task_stack(tsk))
 		return;
 
@@ -161,11 +156,6 @@ void dump_backtrace(struct pt_regs *regs, struct task_struct *tsk)
 			|| cur_fp != thread_saved_fp(tsk))) {
 			printk("The task:%s had been rescheduled!\n",
 				tsk->comm);
-			break;
-		}
-		/* do not dump_backtrace current task on other cpu, frame is the last info */
-		if (tsk != current && tsk->on_cpu == 1) {
-			printk("The task:%s is running on other cpu currently!\n", tsk->comm);
 			break;
 		}
 		/* skip until specified stack frame */
@@ -228,26 +218,6 @@ static int __die(const char *str, int err, struct pt_regs *regs)
 
 static DEFINE_RAW_SPINLOCK(die_lock);
 
-#define FS_SYNC_TIMEOUT_MS 2000
-static struct work_struct fs_sync_work;
-static DECLARE_COMPLETION(sync_compl);
-static void fs_sync_work_func(struct work_struct *work)
-{
-	pr_emerg("sys_sync:syncing fs\n");
-	sys_sync();
-	complete(&sync_compl);
-}
-
-void exec_fs_sync_work(void)
-{
-	INIT_WORK(&fs_sync_work, fs_sync_work_func);
-	reinit_completion(&sync_compl);
-	schedule_work(&fs_sync_work);
-	if (wait_for_completion_timeout(&sync_compl, msecs_to_jiffies(FS_SYNC_TIMEOUT_MS)) == 0)
-		pr_emerg("sys_sync:wait complete timeout\n");
-}
-EXPORT_SYMBOL(exec_fs_sync_work);
-
 /*
  * This function is protected against re-entrancy.
  */
@@ -256,11 +226,6 @@ void die(const char *str, struct pt_regs *regs, int err)
 	int ret;
 	unsigned long flags;
 
-	if (!in_atomic())
-	{
-		pr_emerg("sys_sync:try sys sync in die\n");
-		exec_fs_sync_work();
-	}
 	raw_spin_lock_irqsave(&die_lock, flags);
 
 	oops_enter();
@@ -284,7 +249,7 @@ void die(const char *str, struct pt_regs *regs, int err)
 	raw_spin_unlock_irqrestore(&die_lock, flags);
 
 	if (ret != NOTIFY_STOP)
-		do_exit(SIGSEGV);
+		make_task_dead(SIGSEGV);
 }
 
 void arm64_notify_die(const char *str, struct pt_regs *regs,
@@ -901,9 +866,8 @@ static int bug_handler(struct pt_regs *regs, unsigned int esr)
 }
 
 static struct break_hook bug_break_hook = {
-	.esr_val = 0xf2000000 | BUG_BRK_IMM,
-	.esr_mask = 0xffffffff,
 	.fn = bug_handler,
+	.imm = BUG_BRK_IMM,
 };
 
 #ifdef CONFIG_KASAN_SW_TAGS
@@ -972,10 +936,47 @@ int __init early_brk64(unsigned long addr, unsigned int esr,
 	return bug_handler(regs, esr) != DBG_HOOK_HANDLED;
 }
 
+static int refcount_overflow_handler(struct pt_regs *regs, unsigned int esr)
+{
+	u32 dummy_cbz = le32_to_cpup((__le32 *)(regs->pc + 4));
+	bool zero = regs->pstate & PSR_Z_BIT;
+	u32 rt;
+
+	/*
+	 * Find the register that holds the counter address from the
+	 * dummy 'cbz' instruction that follows the 'brk' instruction
+	 * that sent us here.
+	 */
+	rt = aarch64_insn_decode_register(AARCH64_INSN_REGTYPE_RT, dummy_cbz);
+
+	/* First unconditionally saturate the refcount. */
+	*(int *)regs->regs[rt] = INT_MIN / 2;
+
+	/*
+	 * This function has been called because either a negative refcount
+	 * value was seen by any of the refcount functions, or a zero
+	 * refcount value was seen by refcount_{add,dec}().
+	 */
+
+	/* point pc to the branch instruction that detected the overflow */
+	regs->pc += 4 + aarch64_get_branch_offset(dummy_cbz);
+	refcount_error_report(regs, zero ? "hit zero" : "overflow");
+
+	/* advance pc and proceed */
+	regs->pc += 4;
+	return DBG_HOOK_HANDLED;
+}
+
+static struct break_hook refcount_break_hook = {
+	.fn	= refcount_overflow_handler,
+	.imm	= REFCOUNT_BRK_IMM,
+};
+
 /* This registration must happen early, before debug_traps_init(). */
 void __init trap_init(void)
 {
-	register_break_hook(&bug_break_hook);
+	register_kernel_break_hook(&bug_break_hook);
+	register_kernel_break_hook(&refcount_break_hook);
 #ifdef CONFIG_KASAN_SW_TAGS
 	register_break_hook(&kasan_break_hook);
 #endif

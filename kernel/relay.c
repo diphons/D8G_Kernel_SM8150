@@ -196,6 +196,7 @@ free_buf:
 static void relay_destroy_channel(struct kref *kref)
 {
 	struct rchan *chan = container_of(kref, struct rchan, kref);
+	free_percpu(chan->buf);
 	kfree(chan);
 }
 
@@ -580,6 +581,11 @@ struct rchan *relay_open(const char *base_filename,
 		return NULL;
 
 	chan->buf = alloc_percpu(struct rchan_buf *);
+	if (!chan->buf) {
+		kfree(chan);
+		return NULL;
+	}
+
 	chan->version = RELAYFS_CHANNEL_VERSION;
 	chan->n_subbufs = n_subbufs;
 	chan->subbuf_size = subbuf_size;
@@ -920,9 +926,9 @@ static int relay_file_mmap(struct file *filp, struct vm_area_struct *vma)
  *
  *	Poll implemention.
  */
-static unsigned int relay_file_poll(struct file *filp, poll_table *wait)
+static __poll_t relay_file_poll(struct file *filp, poll_table *wait)
 {
-	unsigned int mask = 0;
+	__poll_t mask = 0;
 	struct rchan_buf *buf = filp->private_data;
 
 	if (buf->finalized)
