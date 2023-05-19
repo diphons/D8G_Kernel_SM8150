@@ -815,13 +815,13 @@ static int get_nfcc_hw_info(struct i2c_client *client,
 		struct nqx_dev *nqx_dev, char nci_reset_rsp_payload_len)
 {
 	int ret = 0;
-	return ret;
-
 	char *nci_init_cmd = NULL;
 	char *nci_init_rsp = NULL;
 	char *nci_reset_ntf = NULL;
 	char *nfcc_hw_info = NULL;
 	unsigned char nfcc_hw_info_len = 0;
+
+	return ret;
 
 	nci_init_cmd = kzalloc(NCI_INIT_CMD_LEN + 1, GFP_DMA | GFP_KERNEL);
 	if (!nci_init_cmd) {
