@@ -2946,8 +2946,6 @@ static void ufshcd_hibern8_on_idle_switch_work(struct work_struct *work)
 	}
 
 	hba->hibern8_on_idle.is_enabled = value;
-out:
-	return;
 }
 
 static ssize_t ufshcd_hibern8_on_idle_enable_store(struct device *dev,
