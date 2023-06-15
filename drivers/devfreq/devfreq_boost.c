@@ -11,6 +11,7 @@
 #include <linux/msm_drm_notify.h>
 #include <linux/slab.h>
 #include <uapi/linux/sched/types.h>
+#include <misc/d8g_helper.h>
 
 enum {
 	SCREEN_OFF,
@@ -62,6 +63,9 @@ static void __devfreq_boost_kick(struct boost_dev *b)
 	if (!READ_ONCE(b->df) || test_bit(SCREEN_OFF, &b->state))
 		return;
 
+	if (oprofile == 4)
+		return;
+
 	switch (oprofile) {
 	case 1:
 		period = CONFIG_DEVFREQ_INPUT_BOOST_DURATION_MS * 2;
@@ -95,6 +99,9 @@ static void __devfreq_boost_kick_max(struct boost_dev *b,
 	unsigned long boost_jiffies, curr_expires, new_expires;
 
 	if (!READ_ONCE(b->df) || test_bit(SCREEN_OFF, &b->state))
+		return;
+
+	if (oprofile == 4)
 		return;
 
 	boost_jiffies = msecs_to_jiffies(duration_ms);
