@@ -556,7 +556,7 @@ void page_cache_sync_ra(struct readahead_control *ractl,
 	 * read-ahead will do the right thing and limit the read to just the
 	 * requested range, which we'll set to 1 page for this case.
 	 */
-	if (!ractl->ra->ra_pages || blk_cgroup_congested()) {
+	if (!ractl->ra->ra_pages) {
 		if (!ractl->file)
 			return;
 		req_count = 1;
@@ -664,7 +664,7 @@ void readahead_expand(struct readahead_control *ractl,
 		struct page *page;
 		unsigned long index = ractl->_index - 1;
 		rcu_read_lock();
-		page = radix_tree_lookup(&mapping->i_pages, index);
+		page = radix_tree_lookup(&mapping->page_tree, index);
 		rcu_read_unlock();
 
 		if (page && !radix_tree_exceptional_entry(page))
@@ -690,7 +690,7 @@ void readahead_expand(struct readahead_control *ractl,
 		struct page *page;
 		unsigned long index = ractl->_index + ractl->_nr_pages;
 		rcu_read_lock();
-		page = radix_tree_lookup(&mapping->i_pages, index);
+		page = radix_tree_lookup(&mapping->page_tree, index);
 		rcu_read_unlock();
 
 		if (page && !radix_tree_exceptional_entry(page))

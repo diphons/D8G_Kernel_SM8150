@@ -755,7 +755,7 @@ static inline struct page *readahead_page(struct readahead_control *rac)
 	}
 
 	rcu_read_lock();
-	page = radix_tree_lookup(&rac->mapping->i_pages, rac->_index);
+	page = radix_tree_lookup(&rac->mapping->page_tree, rac->_index);
 	rcu_read_unlock();
 	VM_BUG_ON_PAGE(!PageLocked(page), page);
 	rac->_batch_count = hpage_nr_pages(page);
